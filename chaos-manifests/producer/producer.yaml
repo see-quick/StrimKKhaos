@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app: kafka-producer-client
+    user-test-app: kafka-clients
+  name: kafka-producer-client-{{INDEX}}
+spec:
+  backoffLimit: 0
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app: kafka-producer-client
+        job-name: kafka-producer-client-{{INDEX}}
+        user-test-app: kafka-clients
+      name: kafka-producer-client-{{INDEX}}
+      namespace: my-project
+    spec:
+      containers:
+        - env:
+            - name: BOOTSTRAP_SERVERS
+              value: my-cluster-kafka-bootstrap:9092
+            - name: DELAY_MS
+              value: "1"
+            - name: TOPIC
+              value: my-topic
+            - name: MESSAGE_COUNT
+              value: "1000000000"
+            - name: MESSAGE
+              value: Hello-world
+            - name: PRODUCER_ACKS
+              value: all
+            - name: LOG_LEVEL
+              value: DEBUG
+            - name: CLIENT_TYPE
+              value: KafkaProducer
+          image: quay.io/strimzi-test-clients/test-clients:latest-kafka-3.6.0
+          imagePullPolicy: IfNotPresent
+          name: kafka-producer-client-{{INDEX}}
+      restartPolicy: "Never"

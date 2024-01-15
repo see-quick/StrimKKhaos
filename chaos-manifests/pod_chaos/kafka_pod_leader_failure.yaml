@@ -1,0 +1,13 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kafka-pod-kill-example
+  namespace: myproject
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    pods:
+      myproject:
+        - my-cluster-kafka-2 # specify the pod name directly
+  duration: "5m" # specify the duration for the chaos action

@@ -1,0 +1,15 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: test-http-chaos-metrics
+spec:
+  mode: all
+  selector:
+    labelSelectors:
+      strimzi.io/kind: KafkaBridge
+  target: Response
+  port: 8080
+  method: POST
+  path: '/metrics'
+  abort: true
+  duration: 1m

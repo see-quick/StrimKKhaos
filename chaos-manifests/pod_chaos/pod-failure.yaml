@@ -1,0 +1,14 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: strimzi-operator-failure-example
+  namespace: myproject
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - "myproject"
+    labelSelectors:
+      "strimzi.io/kind": "cluster-operator"
+  duration: "30s"

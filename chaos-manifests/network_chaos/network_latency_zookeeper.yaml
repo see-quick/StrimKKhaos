@@ -1,0 +1,18 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: zookeeper-network-latency-all-4
+  namespace: myproject
+spec:
+  action: delay
+  mode: all
+  selector:
+    pods:
+      myproject:
+        - my-cluster-zookeeper-0
+        - my-cluster-zookeeper-1
+        - my-cluster-zookeeper-2
+  delay:
+    latency: "1000ms"
+    jitter: "3ms"
+  duration: "5m"  # Duration of the latency injection

@@ -1,0 +1,17 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: kafka-io-chaos-4
+  namespace: chaos-mesh
+spec:
+  action: latency
+  mode: one
+  selector:
+    pods:
+      myproject:
+        - my-cluster-kafka-1  # specify the pod name directly
+  volumePath: /var/lib/kafka  # The mount path of the target volume
+  path: /var/lib/kafka/data*/* # The specific path to inject chaos
+  delay: '100ms'
+  percent: 50
+  duration: '10m'

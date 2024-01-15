@@ -1,0 +1,47 @@
+# $ oc get evets
+# LAST SEEN   TYPE      REASON                   OBJECT                                            MESSAGE
+#2m36s       Warning   Unhealthy                pod/alertmanager-alertmanager-0                   Liveness probe failed: Get "http://10.128.2.37:9093/-/healthy": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+#2m36s       Warning   Unhealthy                pod/alertmanager-alertmanager-0                   Readiness probe failed: Get "http://10.128.2.37:9093/-/ready": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+#54m         Normal    TaintManagerEviction     pod/alertmanager-alertmanager-0                   Cancelling deletion of Pod myproject/alertmanager-alertmanager-0
+#54m         Normal    Created                  pod/grafana-59d7487956-r5qhc                      Created container grafana
+#54m         Normal    Started                  pod/grafana-59d7487956-r5qhc                      Started container grafana
+#2m36s       Warning   Unhealthy                pod/grafana-59d7487956-r5qhc                      Readiness probe failed: Get "http://10.128.2.39:3000/api/health": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+#2m46s       Warning   Unhealthy                pod/grafana-59d7487956-r5qhc                      Liveness probe failed: Get "http://10.128.2.39:3000/api/health": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+#2m46s       Normal    Killing                  pod/grafana-59d7487956-r5qhc                      Container grafana failed liveness probe, will be restarted
+
+# NAME                                          READY   STATUS      RESTARTS      AGE
+#  alertmanager-alertmanager-0                   2/2     Running     0             20h
+#  grafana-59d7487956-r5qhc                      1/1     Running     2 (21s ago)   20h
+#  kafka-consumer-client-2g2c6                   1/1     Running     0             20h
+#  kafka-producer-client-1-tcccc                 1/1     Running     0             20h
+#  my-cluster-entity-operator-75fd649878-c8qw6   1/2     Running     3 (15s ago)   20h
+#  my-cluster-kafka-0                            1/1     Running     0             20h
+#  my-cluster-kafka-1                            0/1     OOMKilled   0             49m
+#  my-cluster-kafka-2                            1/1     Running     0             20h
+#  my-cluster-kafka-exporter-dc66d94f6-88kgs     1/1     Running     0             20h
+#  my-cluster-zookeeper-0                        1/1     Running     0             20h
+#  my-cluster-zookeeper-1                        1/1     Running     0             20h
+#  my-cluster-zookeeper-2                        1/1     Running     0             20h
+#  prometheus-operator-599df5876f-nlzfv          1/1     Running     0             20h
+#  prometheus-prometheus-0                       2/2     Running     0             20h
+#  strimzi-cluster-operator-7b6bcddf-4h446       0/1     Running     2 (21s ago)   20h
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: kafka-cpu-memory-stress-2
+  namespace: myproject
+spec:
+  mode: one
+  selector:
+    pods:
+      myproject:
+        - my-cluster-kafka-1 # specify the pod name directly
+  stressors:
+    memory:
+      workers: 2
+      size: '80%' # Adjust the size according to your needs
+    cpu:
+      workers: 3
+      load: 100 # Adjust the load as needed
+  duration: '10m' # Adjust the duration as needed

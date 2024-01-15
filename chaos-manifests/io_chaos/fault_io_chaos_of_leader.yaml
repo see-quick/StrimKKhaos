@@ -1,0 +1,18 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: kafka-io-chaos-3
+  namespace: myproject
+spec:
+  action: fault   # Specify the type of IOChaos, e.g., 'latency', 'fault', 'attrOverride'
+  mode: one          # Selecting a mode; 'one' means injecting chaos into one pod
+  delay: "100ms"      # IO delay
+  errno: 5   # Example: EIO, input/output error
+  selector:
+    pods:
+      myproject:
+        - my-cluster-kafka-1  # specify the pod name directly
+  volumePath: /var/lib/kafka  # The mount path of the target volume
+  path: /var/lib/kafka/data*/* # The specific path to inject chaos
+  percent: 50         # 50% probability of latency (including read, writing, list contents, and so on)
+  duration: "10m"    # Duration of the chaos

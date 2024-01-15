@@ -1,0 +1,99 @@
+# THIS CAUSED OUTAGE FOR GRAFANA and other connections :D and EO, grafana and CO Pods was restarted
+# alertmanager-alertmanager-0                   2/2     Running   0             19h
+# grafana-59d7487956-r5qhc                      1/1     Running   1 (11m ago)   19h
+# kafka-consumer-client-2g2c6                   1/1     Running   0             19h
+# kafka-producer-client-1-tcccc                 1/1     Running   0             19h
+# my-cluster-entity-operator-75fd649878-c8qw6   2/2     Running   1 (11m ago)   19h
+# my-cluster-kafka-0                            1/1     Running   0             19h
+# my-cluster-kafka-1                            1/1     Running   0             5m42s
+# my-cluster-kafka-2                            1/1     Running   0             19h
+# my-cluster-kafka-exporter-dc66d94f6-88kgs     1/1     Running   0             19h
+# my-cluster-zookeeper-0                        1/1     Running   0             19h
+# my-cluster-zookeeper-1                        1/1     Running   0             19h
+# my-cluster-zookeeper-2                        1/1     Running   0             19h
+# prometheus-operator-599df5876f-nlzfv          1/1     Running   0             19h
+# prometheus-prometheus-0                       2/2     Running   0             19h
+# strimzi-cluster-operator-7b6bcddf-4h446       1/1     Running   1 (11m ago)   19h
+# --------------------------------------------------------------------------------------------------------------------
+# EVENTs
+# LAST SEEN   TYPE      REASON                   OBJECT                                            MESSAGE
+# 11m         Warning   Unhealthy                pod/alertmanager-alertmanager-0                   Liveness probe failed: Get "http://10.128.2.37:9093/-/healthy": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 11m         Warning   Unhealthy                pod/alertmanager-alertmanager-0                   Readiness probe failed: Get "http://10.128.2.37:9093/-/ready": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 11m         Normal    TaintManagerEviction     pod/alertmanager-alertmanager-0                   Cancelling deletion of Pod myproject/alertmanager-alertmanager-0
+# 12m         Normal    Created                  pod/grafana-59d7487956-r5qhc                      Created container grafana
+# 12m         Normal    Started                  pod/grafana-59d7487956-r5qhc                      Started container grafana
+# 11m         Warning   Unhealthy                pod/grafana-59d7487956-r5qhc                      Readiness probe failed: Get "http://10.128.2.39:3000/api/health": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 12m         Warning   Unhealthy                pod/grafana-59d7487956-r5qhc                      Liveness probe failed: Get "http://10.128.2.39:3000/api/health": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 12m         Normal    Killing                  pod/grafana-59d7487956-r5qhc                      Container grafana failed liveness probe, will be restarted
+# 12m         Normal    Pulled                   pod/grafana-59d7487956-r5qhc                      Container image "grafana/grafana:7.3.7" already present on machine
+# 11m         Normal    TaintManagerEviction     pod/grafana-59d7487956-r5qhc                      Cancelling deletion of Pod myproject/grafana-59d7487956-r5qhc
+# 13m         Normal    FinalizerInited          stresschaos/kafka-cpu-memory-stress-2             Finalizer has been inited
+# 13m         Normal    Updated                  stresschaos/kafka-cpu-memory-stress-2             Successfully update finalizer of resource
+# 13m         Normal    Started                  stresschaos/kafka-cpu-memory-stress-2             Experiment has started
+# 13m         Normal    Updated                  stresschaos/kafka-cpu-memory-stress-2             Successfully update desiredPhase of resource
+# 13m         Normal    Applied                  stresschaos/kafka-cpu-memory-stress-2             Successfully apply chaos for myproject/my-cluster-kafka-1/kafka
+# 13m         Normal    Updated                  stresschaos/kafka-cpu-memory-stress-2             Successfully update records of resource
+# 11m         Normal    Deleted                  stresschaos/kafka-cpu-memory-stress-2             Experiment has been deleted
+# 11m         Normal    Updated                  stresschaos/kafka-cpu-memory-stress-2             Successfully update desiredPhase of resource
+# 11m         Normal    Recovered                stresschaos/kafka-cpu-memory-stress-2             Successfully recover chaos for myproject/my-cluster-kafka-1/kafka
+# 11m         Normal    Updated                  stresschaos/kafka-cpu-memory-stress-2             Successfully update records of resource
+# 11m         Normal    FinalizerInited          stresschaos/kafka-cpu-memory-stress-2             Finalizer has been removed
+# 11m         Normal    Updated                  stresschaos/kafka-cpu-memory-stress-2             Successfully update finalizer of resource
+# 12m         Normal    Pulled                   pod/my-cluster-entity-operator-75fd649878-c8qw6   Container image "quay.io/strimzi/operator:0.39.0" already present on machine
+# 12m         Normal    Created                  pod/my-cluster-entity-operator-75fd649878-c8qw6   Created container user-operator
+# 12m         Normal    Started                  pod/my-cluster-entity-operator-75fd649878-c8qw6   Started container user-operator
+# 12m         Warning   Unhealthy                pod/my-cluster-entity-operator-75fd649878-c8qw6   Liveness probe failed: Get "http://10.128.2.35:8081/healthy": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 12m         Warning   Unhealthy                pod/my-cluster-entity-operator-75fd649878-c8qw6   Readiness probe failed: Get "http://10.128.2.35:8081/ready": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 11m         Warning   Unhealthy                pod/my-cluster-entity-operator-75fd649878-c8qw6   Readiness probe failed: Get "http://10.128.2.35:8080/ready": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 11m         Warning   Unhealthy                pod/my-cluster-entity-operator-75fd649878-c8qw6   Liveness probe failed: Get "http://10.128.2.35:8080/healthy": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 12m         Normal    Killing                  pod/my-cluster-entity-operator-75fd649878-c8qw6   Container user-operator failed liveness probe, will be restarted
+# 11m         Warning   Unhealthy                pod/my-cluster-entity-operator-75fd649878-c8qw6   Readiness probe failed: Get "http://10.128.2.35:8081/ready": dial tcp 10.128.2.35:8081: connect: connection refused
+# 11m         Normal    TaintManagerEviction     pod/my-cluster-entity-operator-75fd649878-c8qw6   Cancelling deletion of Pod myproject/my-cluster-entity-operator-75fd649878-c8qw6
+# 11m         Warning   Unhealthy                pod/my-cluster-entity-operator-75fd649878-c8qw6   Liveness probe failed: Get "http://10.128.2.35:8081/healthy": dial tcp 10.128.2.35:8081: connect: connection refused
+# 12m         Warning   Evicted                  pod/my-cluster-kafka-1                            The node was low on resource: memory. Threshold quantity: 100Mi, available: 14040Ki. Container kafka was using 10461736Ki, request is 0, has larger consumption of memory.
+# 12m         Normal    Killing                  pod/my-cluster-kafka-1                            Stopping container kafka
+# 11m         Warning   ExceededGracePeriod      pod/my-cluster-kafka-1                            Container runtime did not kill the pod within specified grace period.
+# 11m         Warning   Evicted                  pod/my-cluster-kafka-1                            The node was low on resource: memory. Threshold quantity: 100Mi, available: 60960Ki. Container kafka was using 4760380Ki, request is 0, has larger consumption of memory.
+# 11m         Normal    TaintManagerEviction     pod/my-cluster-kafka-1                            Cancelling deletion of Pod myproject/my-cluster-kafka-1
+# 6m29s       Normal    Scheduled                pod/my-cluster-kafka-1                            Successfully assigned myproject/my-cluster-kafka-1 to majk-414-wvkf9-worker-0-jfrkd
+# 6m25s       Normal    SuccessfulAttachVolume   pod/my-cluster-kafka-1                            AttachVolume.Attach succeeded for volume "pvc-2a188448-bbf6-4ffc-88c2-d25729a14069"
+# 6m19s       Normal    AddedInterface           pod/my-cluster-kafka-1                            Add eth0 [10.128.2.123/23] from openshift-sdn
+# 6m19s       Normal    Pulled                   pod/my-cluster-kafka-1                            Container image "quay.io/strimzi/kafka:0.39.0-kafka-3.6.1" already present on machine
+# 6m19s       Normal    Created                  pod/my-cluster-kafka-1                            Created container kafka
+# 6m19s       Normal    Started                  pod/my-cluster-kafka-1                            Started container kafka
+# 11m         Normal    TaintManagerEviction     pod/my-cluster-zookeeper-1                        Cancelling deletion of Pod myproject/my-cluster-zookeeper-1
+# 11m         Warning   Unhealthy                pod/my-cluster-zookeeper-1                        Liveness probe failed: command timed out
+# 11m         Warning   Unhealthy                pod/my-cluster-zookeeper-1                        Readiness probe failed: command timed out
+# 12m         Normal    Created                  pod/strimzi-cluster-operator-7b6bcddf-4h446       Created container strimzi-cluster-operator
+# 12m         Normal    Started                  pod/strimzi-cluster-operator-7b6bcddf-4h446       Started container strimzi-cluster-operator
+# 12m         Warning   Unhealthy                pod/strimzi-cluster-operator-7b6bcddf-4h446       Readiness probe failed: Get "http://10.128.2.32:8080/ready": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 12m         Warning   Unhealthy                pod/strimzi-cluster-operator-7b6bcddf-4h446       Liveness probe failed: Get "http://10.128.2.32:8080/healthy": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+# 12m         Warning   Unhealthy                pod/strimzi-cluster-operator-7b6bcddf-4h446       Readiness probe failed: Get "http://10.128.2.32:8080/ready": EOF
+# 12m         Warning   Unhealthy                pod/strimzi-cluster-operator-7b6bcddf-4h446       Readiness probe failed: Get "http://10.128.2.32:8080/ready": read tcp 10.128.2.1:55296->10.128.2.32:8080: read: connection reset by peer
+# 12m         Normal    Killing                  pod/strimzi-cluster-operator-7b6bcddf-4h446       Container strimzi-cluster-operator failed liveness probe, will be restarted
+# 12m         Normal    Pulled                   pod/strimzi-cluster-operator-7b6bcddf-4h446       Container image "quay.io/strimzi/operator:0.39.0" already present on machine
+# 11m         Warning   Unhealthy                pod/strimzi-cluster-operator-7b6bcddf-4h446       Readiness probe failed: Get "http://10.128.2.32:8080/ready": dial tcp 10.128.2.32:8080: connect: connection refused
+# 11m         Normal    TaintManagerEviction     pod/strimzi-cluster-operator-7b6bcddf-4h446       Cancelling deletion of Pod myproject/strimzi-cluster-operator-7b6bcddf-4h446
+# 11m         Warning   Unhealthy                pod/strimzi-cluster-operator-7b6bcddf-4h446       Liveness probe failed: Get "http://10.128.2.32:8080/healthy": dial tcp 10.128.2.32:8080: connect: connection refused
+#
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: kafka-cpu-memory-stress-2
+  namespace: myproject
+spec:
+  mode: one
+  selector:
+    pods:
+      myproject:
+        - my-cluster-kafka-1 # specify the pod name directly
+  stressors:
+    memory:
+      workers: 1
+      size: '90%' # Adjust the size according to your needs
+      time: "3min"
+    cpu:
+      workers: 3
+      load: 100 # Adjust the load as needed
+  duration: '10m' # Adjust the duration as needed

@@ -1,0 +1,18 @@
+# list info about Leader/Followers and Replicas for specific Topic
+$ kubectl exec -it my-cluster-kafka-0 -- /opt/kafka/bin/kafka-topics.sh --describe --topic my-topic --bootstrap-server localhost:9092
+Topic: my-topic	TopicId: NIXfCFsrR863UJSnNaU1VQ	PartitionCount: 1	ReplicationFactor: 3	Configs: min.insync.replicas=2,message.format.version=3.0-IV1
+	Topic: my-topic	Partition: 0	Leader: 1	Replicas: 1,0,2	Isr: 1,0,2
+------------------------------------------------------------------------------------------------------------------------
+# fetch Leader number from Kafka pod
+$ kubectl exec -it my-cluster-kafka-0 -- /opt/kafka/bin/kafka-topics.sh --describe --topic my-topic --bootstrap-server localhost:9092 | grep "Leader:" | awk '{print $6}'
+1
+------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+## KAFKA CONNECT commands
+
+### install mongodb via helm
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install mongodb bitnami/mongodb --set podSecurityContext.fsGroup="",containerSecurityContext.enabled=false,podSecurityContext.enabled=false,auth.enabled=false --version 13.6.0 -n kafka

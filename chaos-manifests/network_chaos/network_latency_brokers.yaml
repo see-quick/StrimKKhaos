@@ -1,0 +1,15 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: kafka-network-latency-all-3
+  namespace: myproject
+spec:
+  action: delay
+  mode: all
+  selector:
+    labelSelectors:
+      "strimzi.io/kind": "Kafka"  # Adjust the label to match your Kafka brokers
+  delay:
+    latency: "100ms"
+    jitter: "3ms"
+  duration: "5m"  # Duration of the latency injection

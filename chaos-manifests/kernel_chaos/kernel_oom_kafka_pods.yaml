@@ -1,0 +1,12 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: KernelChaos
+metadata:
+  name: kernel-fault-1
+spec:
+  mode: all
+  selector:
+    labelSelectors:
+      "strimzi.io/kind": "Kafka"  # Adjust the label to match your Kafka brokers
+    action:
+#    type: KernelFault
+    type: OOMKill

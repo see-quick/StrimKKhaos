@@ -1,0 +1,19 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: kafka-cpu-memory-stress
+  namespace: myproject
+spec:
+  mode: one
+  selector:
+    pods:
+      myproject:
+        - my-cluster-kafka-1 # specify the pod name directly
+  stressors:
+    memory:
+      workers: 1
+      size: '256M' # Adjust the size according to your needs
+    cpu:
+      workers: 1
+      load: 100 # Adjust the load as needed
+  duration: '10m' # Adjust the duration as needed

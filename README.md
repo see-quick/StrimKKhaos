@@ -21,10 +21,19 @@ We have crafted a series of chaos experiments, each designed to challenge differ
 - Network latency simulation
 - Deliberate Kafka broker pod deletion
 - Operator functionality under network stress or pod failure
+- HTTP chaos (e.g., targeting healthcheck probes, HTTP servers etc.)
 - Multi-fault conditions
 
 Each scenario follows a template of defining a steady state, hypothesizing outcomes, designing the experiment, and monitoring and analyzing the results.
 
-## Contributions and Feedback
+## Tech stack
 
-StrimKKhaos thrives on community input. We welcome contributions, whether they are additional chaos scenarios, improvements to existing ones, or feedback on the testing outcomes. Let's collaboratively strengthen the Kafka-Strimzi ecosystem.
+1. **Prometheus**: A powerful time-series database and monitoring solution that works well with Kubernetes. It is commonly used for recording real-time metrics.
+2. **Grafana**: For visualizing the data collected by Prometheus. It provides a powerful dashboard to monitor the state of clusters and applications.
+3. **Chaos Mesh:** tool tailored for Kubernetes that allows you to easily define and execute chaos experiments.
+4. **Loki:** is a highly efficient and scalable log aggregation system from Grafana Labs, optimized for Kubernetes, 
+that complements Prometheus and Grafana by enabling cost-effective and seamless indexing and querying of logs using a label-focused approach.
+
+## Getting started
+
+TODO:
