@@ -99,38 +99,6 @@ uninstall_chaos_mesh() {
 #####################################################################################################################
 #####################################################################################################################
 
-# Function to display usage information
-usage() {
-    echo "Usage: $0 [options]"
-    echo "Options:"
-    echo "  -h, --help                 Show this help message"
-    echo "  --install                  Install Chaos Mesh"
-    echo "  --uninstall                Uninstall Chaos Mesh"
-    echo "  --pod-chaos                Apply a PodChaos experiment"
-    echo "  --release-name NAME        Specify the release name for Chaos Mesh (default: 'chaos-mesh')"
-    echo "  --namespace NS             Specify the namespace for Chaos Mesh (default: 'chaos-mesh')"
-    echo "  --version VER              Specify the version of Chaos Mesh (default: '2.6.2')"
-    echo "  --openshift                Indicate that the script is running in an OpenShift environment"
-    echo ""
-    echo "Example:"
-    echo "  $0 --install --release-name my-chaos --namespace my-namespace --version 2.6.2"
-}
-
-# Function to echo success messages in green with a [SUCCESS] prefix
-echo_success() {
-    echo -e "\033[0;32m[SUCCESS] $1\033[0m"
-}
-
-# Function to echo warning messages in yellow with a [WARNING] prefix
-echo_warning() {
-    echo -e "\033[0;33m[WARNING] $1\033[0m"
-}
-
-# Function to echo error messages in red with an [ERROR] prefix
-echo_error() {
-    echo -e "\033[0;31m[ERROR] $1\033[0m"
-}
-
 #####################################################################################################################
 ################################################ POD CHAOS  #########################################################
 #####################################################################################################################
@@ -270,7 +238,6 @@ generate_experiment_name() {
 #####################################################################################################################
 #####################################################################################################################
 
-
 #####################################################################################################################
 ########################################### AUXILIARY METHODS #######################################################
 #####################################################################################################################
@@ -285,7 +252,45 @@ check_chaos_mesh() {
     fi
 }
 
-# Main function to parse arguments and execute commands
+# Function to display usage information
+usage() {
+    echo "Usage: $0 [options]"
+    echo "Options:"
+    echo "  -h, --help                 Show this help message"
+    echo "  --install                  Install Chaos Mesh"
+    echo "  --uninstall                Uninstall Chaos Mesh"
+    echo "  --pod-chaos                Apply a PodChaos experiment"
+    echo "  --release-name NAME        Specify the release name for Chaos Mesh (default: 'chaos-mesh')"
+    echo "  --namespace NS             Specify the namespace for Chaos Mesh (default: 'chaos-mesh')"
+    echo "  --version VER              Specify the version of Chaos Mesh (default: '2.6.2')"
+    echo "  --openshift                Indicate that the script is running in an OpenShift environment"
+    echo ""
+    echo "Example:"
+    echo "  $0 --install --release-name my-chaos --namespace my-namespace --version 2.6.2"
+}
+
+# Function to echo success messages in green with a [SUCCESS] prefix
+echo_success() {
+    echo -e "\033[0;32m[SUCCESS] $1\033[0m"
+}
+
+# Function to echo warning messages in yellow with a [WARNING] prefix
+echo_warning() {
+    echo -e "\033[0;33m[WARNING] $1\033[0m"
+}
+
+# Function to echo error messages in red with an [ERROR] prefix
+echo_error() {
+    echo -e "\033[0;31m[ERROR] $1\033[0m"
+}
+
+#####################################################################################################################
+#####################################################################################################################
+#####################################################################################################################
+
+#####################################################################################################################
+########################################  MAIN OF THE PROGRAM ######################################################
+#####################################################################################################################
 main() {
     local install_flag=false
     local uninstall_flag=false
