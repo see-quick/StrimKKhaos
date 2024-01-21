@@ -1,0 +1,14 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kafka-kill-random-leader-0
+  namespace: strimzi-kafka
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - strimzi-kafka
+    labelSelectors:
+      strimzi.io/kind: "Kafka"
+  duration: "5m"
