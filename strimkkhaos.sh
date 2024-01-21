@@ -206,7 +206,7 @@ build_query_expr() {
     local time_range=$1
     local function_name="rate"
 
-    if [[ $time_range == "1m" ]]; then
+    if [[ $time_range == "5m" ]]; then
         function_name="irate" # Use irate for short time range because, it calculates the rate of increase using the last two points in the provided range
     fi
 
@@ -223,6 +223,7 @@ verify_kafka_throughput() {
 
     # NORMAL AVERAGE compute based on 1h
     local normal_average=$(curl -s -G --data-urlencode "query=$kafka_query_expr" "$PROMETHEUS_URL/api/v1/query" | jq -r '.data.result[0].value[1]')
+    normal_average=$(round $normal_average)
     echo "Normal average of messages in the past hour is $normal_average"
 
     kafka_query_expr=$(build_query_expr "5m")
@@ -231,8 +232,6 @@ verify_kafka_throughput() {
     local chaos_duration=300 # Duration of chaos experiment in seconds
     local chaos_average=$(scrape_metrics_during_chaos "$kafka_query_expr" $scrape_interval $chaos_duration)
 
-    normal_average=$(round $normal_average)
-
     # Perform the comparison using bc
     result=$(echo "${chaos_average} < ${normal_average}" | bc -l)
 
@@ -240,6 +239,7 @@ verify_kafka_throughput() {
         echo_success "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average} which is lower than normal average i.e., ${normal_average}"
     else
         echo_error "Kafka throughput did not decrease as expected: chaos average msg/s is ${chaos_average} which is greater than normal average i.e., ${normal_average}"
+        exit 1
     fi
 }
 

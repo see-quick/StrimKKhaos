@@ -1,7 +1,7 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: PodChaos
 metadata:
-  name: kafka-kill-random-leader-0
+  name: kafka-kill-random-leader-4
   namespace: strimzi-kafka
 spec:
   action: pod-kill
@@ -11,4 +11,5 @@ spec:
       - strimzi-kafka
     labelSelectors:
       strimzi.io/kind: "Kafka"
+      strimzi.io/broker-role: "true"
   duration: "5m"
