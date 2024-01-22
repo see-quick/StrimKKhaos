@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# make script compatible with Linux-based system and also for MacOS
+source ./common.sh
+
 # Mandatory environment variables
 PROMETHEUS_URL="${PROMETHEUS_URL:-http://default-prometheus-url}" # Replace 'http://default-prometheus-url' with your default Prometheus URL
 
@@ -45,7 +48,7 @@ install_chaos_mesh() {
     local all_pods_running=false
 
     while [ $retry_count -lt $max_retries ]; do
-        if kubectl get pods -n $namespace | grep 'chaos' | grep -q 'Running'; then
+        if kubectl get pods -n $namespace | $GREP 'chaos' | $GREP -q 'Running'; then
             all_pods_running=true
             break
         fi
@@ -62,7 +65,7 @@ install_chaos_mesh() {
     fi
 
     if [ "$openshift_flag" = true ]; then
-        if ! oc get scc privileged -o jsonpath='{.users[]}' | grep -q "system:serviceaccount:$namespace:chaos-daemon"; then
+        if ! oc get scc privileged -o jsonpath='{.users[]}' | $GREP -q "system:serviceaccount:$namespace:chaos-daemon"; then
             oc adm policy add-scc-to-user privileged system:serviceaccount:$namespace:chaos-daemon
             echo_success "Added 'privileged' SCC to 'chaos-daemon' service account."
         else
@@ -87,7 +90,7 @@ uninstall_chaos_mesh() {
     local all_pods_deleted=false
 
     while [ $retry_count -lt $max_retries ]; do
-        if ! kubectl get pods -n $namespace | grep -q 'chaos'; then
+        if ! kubectl get pods -n $namespace | $GREP -q 'chaos'; then
             all_pods_deleted=true
             break
         fi
@@ -202,7 +205,7 @@ list_chaos() {
     if [ -d "$directory" ] && [ ${#files[@]} -gt 0 ]; then
         for file in "${files[@]}"; do
             if [ -f "$file" ]; then
-                experiment_name=$(grep 'name:' "$file" | awk '{print $2}' | head -1)
+                experiment_name=$($GREP 'name:' "$file" | awk '{print $2}' | head -1)
                 echo "- $experiment_name"
             fi
         done
@@ -287,7 +290,7 @@ apply_chaos() {
         return 1
     fi
 
-    sed -i '' "s/name: .*/name: $experiment_name/" "$template_yaml"
+    $SED -i "s/name: .*/name: $experiment_name/" "$template_yaml"
 
     echo "Applying Chaos from YAML manifest: $template_yaml"
     kubectl apply -f "$template_yaml"
@@ -349,7 +352,7 @@ generate_experiment_name() {
     # Find the highest number used so far
     local max_number=-1
     for name in $existing_names; do
-        local number=$(echo "$name" | sed -e "s/^${base_name}-//")
+        local number=$(echo "$name" | $SED -e "s/^${base_name}-//")
         if [[ "$number" =~ ^[0-9]+$ ]] && [ "$number" -gt "$max_number" ]; then
             max_number=$number
         fi
