@@ -1,6 +1,6 @@
 # StrimKKhaos
 
-# StrimKKhaos: Chaos Engineering for Apache Kafka on Kubernetes
+# PoC of StrimKKhaos: Chaos Engineering for Apache Kafka on Kubernetes
 
 ## Overview
 
