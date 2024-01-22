@@ -1,7 +1,7 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: NetworkChaos
 metadata:
-  name: anubis-kafka-producers-fast-internal-network-delay-all-1
+  name: anubis-kafka-producers-fast-internal-network-delay-all
   namespace: strimzi-clients
 spec:
   action: delay
