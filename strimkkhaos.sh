@@ -136,13 +136,13 @@ scrape_metrics_during_chaos() {
 
     while [ $SECONDS -lt $end_time ]; do
         local result=$(curl -s -G --data-urlencode "query=$query_expr" "$PROMETHEUS_URL/api/v1/query" | jq -r '.data.result[0].value[1]')
-        total=$(echo "$total + $result" | bc)
+        total=$(echo "$total + $result" | awk '{print $1 + $2}')
         count=$((count + 1))
         sleep $interval
     done
 
     if [ $count -gt 0 ]; then
-        local average=$(echo "$total / $count" | awk '{printf "%.2f", $1}')
+        local average=$(echo "$total $count" | awk '{print $1 / $2}')
         local round_average_two_decimals=$(round $average)
         echo "$round_average_two_decimals"
     else
@@ -182,8 +182,9 @@ verify_kafka_throughput() {
     local chaos_duration=300 # Duration of chaos experiment in seconds
     local chaos_average=$(scrape_metrics_during_chaos "$kafka_query_expr" $scrape_interval $chaos_duration)
 
-    # Perform the comparison using bc
-    result=$(echo "${chaos_average} < ${normal_average}" | bc -l)
+    # Perform the comparison using awk
+    result=$(echo "$chaos_average $normal_average" | awk '{print ($1 < $2) ? "1" : "0"}')
+
 
     if [[ $result -eq 1 ]]; then
         echo_success "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average} which is lower than normal average i.e., ${normal_average}"
