@@ -1,0 +1,15 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: anubis-kafka-kill-all-pods
+  namespace: strimzi-kafka
+spec:
+  action: pod-kill
+  mode: all
+  selector:
+    namespaces:
+      - strimzi-kafka
+    labelSelectors:
+      strimzi.io/kind: "Kafka"
+      strimzi.io/broker-role: "true"
+  duration: "5m"

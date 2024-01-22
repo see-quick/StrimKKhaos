@@ -27,6 +27,15 @@ install_chaos_mesh() {
         --set chaosDaemon.runtime=crio \
         --set chaosDaemon.socketPath=/var/run/crio/crio.sock \
         --set chaosDaemon.env.RUST_BACKTRACE=full \
+        --set chaosDaemon.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight=1 \
+        --set chaosDaemon.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].preference.matchExpressions[0].key=nodetype \
+        --set chaosDaemon.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].preference.matchExpressions[0].operator=In \
+        --set chaosDaemon.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].preference.matchExpressions[0].values[0]=kafka \
+        --set chaosDaemon.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].preference.matchExpressions[0].values[1]=connect \
+        --set chaosDaemon.tolerations[0].key=nodetype \
+        --set chaosDaemon.tolerations[0].operator=Equal \
+        --set chaosDaemon.tolerations[0].value=connect \
+        --set chaosDaemon.tolerations[0].effect=NoSchedule \
         --version $cm_version
 
     # Wait for all Chaos Mesh pods to be running
@@ -100,47 +109,17 @@ uninstall_chaos_mesh() {
 #####################################################################################################################
 
 #####################################################################################################################
-################################################ POD CHAOS  #########################################################
+################################################ POD CHAOS ##########################################################
 #####################################################################################################################
 
 ############################################### KILLING LEADER ######################################################
 
 # Function to apply PodChaos
+# $1 - experiment name
 apply_podchaos() {
-    local template_yaml="./chaos-manifests/pod_chaos/kafka_random_pod_kill.yaml"
-    local experiment_name=$(generate_experiment_name)
+    local template_yaml="./chaos-manifests/pod_chaos/anubis_kafka_kill_random_pod.yaml"
 
-    # Check if the template YAML file exists
-    if [ ! -f "$template_yaml" ]; then
-        echo_error "PodChaos template YAML file does not exist at path: $template_yaml"
-        return 1
-    fi
-
-    sed -i '' "s/name: .*/name: $experiment_name/" "$template_yaml"
-
-    echo "Applying PodChaos from YAML manifest: $template_yaml"
-    kubectl apply -f "$template_yaml"
-
-    echo_success "PodChaos applied using manifest $template_yaml."
-}
-
-# Function to check if the PodChaos experiment has started
-check_podchaos_started() {
-    # Get the status of the PodChaos object
-    pod_chaos_status=$(oc get PodChaos kafka-random-pod-kill -n strimzi-kafka -o json)
-
-    # Check if AllInjected is True
-    all_injected=$(echo "$pod_chaos_status" | jq -r '.status.conditions[] | select(.type=="AllInjected") | .status')
-
-    # Check the desiredPhase
-    desired_phase=$(echo "$pod_chaos_status" | jq -r '.status.experiment.desiredPhase')
-
-    # Determine if the experiment has started
-    if [[ "$all_injected" == "True" && "$desired_phase" == "Run" ]]; then
-        echo_success "PodChaos experiment has started."
-    else
-        echo_warning "PodChaos experiment has not started or is completed."
-    fi
+    apply_chaos $template_yaml "$1"
 }
 
 # Function to scrape Prometheus metrics at regular intervals
@@ -211,12 +190,161 @@ verify_kafka_throughput() {
     fi
 }
 
-# Function to generate the next experiment name
-generate_experiment_name() {
-    local base_name="kafka-kill-random-leader"
+# Function to list all Chaos experiments from YAML files
+# $1 - directory name (e.g., pod_chaos, network_chaos, http_chaos)
+list_chaos() {
+    echo_warning "You did not specify a concrete pod chaos"
+    echo "The list of the supported $1 are: "
 
-    # Get the list of existing PodChaos objects with the base name
-    local existing_names=$(kubectl get PodChaos -n strimzi-kafka -o jsonpath="{.items[?(@.metadata.name startsWith ${base_name})].metadata.name}")
+    local directory="./chaos-manifests/$1"
+    local files=("$directory"/*.yaml)
+
+    if [ -d "$directory" ] && [ ${#files[@]} -gt 0 ]; then
+        for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+                experiment_name=$(grep 'name:' "$file" | awk '{print $2}' | head -1)
+                echo "- $experiment_name"
+            fi
+        done
+    else
+        echo "No $1 YAML files found in $directory."
+    fi
+}
+
+#####################################################################################################################
+#####################################################################################################################
+#####################################################################################################################
+
+#####################################################################################################################
+############################################## NETWORK CHAOS ########################################################
+#####################################################################################################################
+
+######################################### PRODUCER FAST EXTERNAL ####################################################
+
+# $1 - unique experiment name
+apply_network_chaos_delay_to_internal_producers() {
+    local template_yaml="./chaos-manifests/network_chaos/anubis_kafka_producers_fast_internal_network_delay_all.yaml"
+
+    apply_chaos $template_yaml "$1"
+}
+
+#####################################################################################################################
+########################################### AUXILIARY METHODS #######################################################
+#####################################################################################################################
+
+# Function to check if Chaos Mesh is installed
+check_chaos_mesh() {
+    if ! kubectl get crd podchaos.chaos-mesh.org >/dev/null 2>&1; then
+        echo_warning "Chaos Mesh is not installed. Installing it now..."
+        install_chaos_mesh
+    else
+        echo_success "Chaos Mesh is installed."
+    fi
+}
+
+# Function to display usage information
+usage() {
+    echo "Usage: $0 [options]"
+    echo "Options:"
+    echo "  -h, --help                          Show this help message"
+    echo "  --install                           Install Chaos Mesh"
+    echo "  --uninstall                         Uninstall Chaos Mesh"
+    echo "  --pod-chaos experiment_name         Apply a specific PodChaos experiment"
+    echo "  --network-chaos experiment_name     Apply a specific NetworkChaos experiment"
+    echo "  --release-name NAME                 Specify the release name for Chaos Mesh (default: 'chaos-mesh')"
+    echo "  --namespace NS                      Specify the namespace for Chaos Mesh (default: 'chaos-mesh')"
+    echo "  --version VER                       Specify the version of Chaos Mesh (default: '2.6.2')"
+    echo "  --openshift                         Indicate that the script is running in an OpenShift environment"
+    echo ""
+    echo "Example:"
+    echo "  $0 --install --release-name my-chaos --namespace my-namespace --version 2.6.2"
+    echo "  $0 --pod-chaos anubis-kafka-kill-all-pods"
+    echo "  $0 --network-chaos anubis-kafka-producers-fast-internal-network-delay-all"
+}
+
+# Function to echo success messages in green with a [SUCCESS] prefix
+echo_success() {
+    echo -e "\033[0;32m[SUCCESS] $1\033[0m"
+}
+
+# Function to echo warning messages in yellow with a [WARNING] prefix
+echo_warning() {
+    echo -e "\033[0;33m[WARNING] $1\033[0m"
+}
+
+# Function to echo error messages in red with an [ERROR] prefix
+echo_error() {
+    echo -e "\033[0;31m[ERROR] $1\033[0m"
+}
+
+apply_chaos() {
+    local template_yaml=$1
+    local experiment_name=$2
+
+    # Check if the template YAML file exists
+    if [ ! -f "$template_yaml" ]; then
+        echo_error "Chaos template YAML file does not exist at path: $template_yaml"
+        return 1
+    fi
+
+    sed -i '' "s/name: .*/name: $experiment_name/" "$template_yaml"
+
+    echo "Applying Chaos from YAML manifest: $template_yaml"
+    kubectl apply -f "$template_yaml"
+
+    echo_success "Chaos applied using manifest $template_yaml."
+}
+
+# Function to check if the Chaos experiment has started and wait until it does, with a 5-minute timeout
+# $1 - experiment name
+# $2 - chaos type (e.g., PodChaos, NetworkChaos)
+# $3 - chaos namespace
+check_chaos_started() {
+    max_wait=300 # Maximum wait time of 5 minutes (300 seconds)
+    elapsed_time=0 # Counter to keep track of the elapsed time
+    sleep_duration=5 # Initial sleep duration in seconds
+
+    while [ $elapsed_time -lt $max_wait ]; do
+        # Get the status of the PodChaos object
+        chaos_status=$(kubectl get $2 $1 -n $3 -o json)
+
+        # Check if AllInjected is True
+        all_injected=$(echo "$chaos_status" | jq -r '.status.conditions[] | select(.type=="AllInjected") | .status')
+
+        # Check the desiredPhase
+        desired_phase=$(echo "$chaos_status" | jq -r '.status.experiment.desiredPhase')
+
+        # Determine if the experiment has started
+        if [[ "$all_injected" == "True" && "$desired_phase" == "Run" ]]; then
+            echo_success "{$2} experiment has started."
+            return
+        else
+            echo "Waiting for {$2} experiment to start... Next check in $sleep_duration seconds."
+            sleep $sleep_duration
+
+            # Update the elapsed time and increase the sleep duration for the next iteration
+            elapsed_time=$((elapsed_time + sleep_duration))
+            sleep_duration=$((sleep_duration + 5)) # Increase sleep duration by 5 seconds each time
+
+            # Cap the sleep_duration to not exceed the remaining time
+            if [ $((elapsed_time + sleep_duration)) -gt $max_wait ]; then
+                sleep_duration=$((max_wait - elapsed_time))
+            fi
+        fi
+    done
+
+    echo_error "{$2} experiment did not start within 5 minutes."
+    exit 1
+}
+
+# Function to generate the next experiment name
+# $1 - experiment name without number suffix (i.e., 'kafka-leader-kill')
+# $2 - chaos type of experiment (e.g., PodChaos, NetworkChaos, StressChaos...)
+generate_experiment_name() {
+    local base_name=$1
+
+    # Get the list of existing Chaos objects with the base name
+    local existing_names=$(kubectl get $2 --all-namespaces -o jsonpath="{.items[?(@.metadata.name startsWith ${base_name})].metadata.name}")
 
     # Find the highest number used so far
     local max_number=-1
@@ -239,56 +367,6 @@ generate_experiment_name() {
 #####################################################################################################################
 
 #####################################################################################################################
-########################################### AUXILIARY METHODS #######################################################
-#####################################################################################################################
-
-# Function to check if Chaos Mesh is installed
-check_chaos_mesh() {
-    if ! kubectl get crd podchaos.chaos-mesh.org >/dev/null 2>&1; then
-        echo_warning "Chaos Mesh is not installed. Installing it now..."
-        install_chaos_mesh
-    else
-        echo_success "Chaos Mesh is installed."
-    fi
-}
-
-# Function to display usage information
-usage() {
-    echo "Usage: $0 [options]"
-    echo "Options:"
-    echo "  -h, --help                 Show this help message"
-    echo "  --install                  Install Chaos Mesh"
-    echo "  --uninstall                Uninstall Chaos Mesh"
-    echo "  --pod-chaos                Apply a PodChaos experiment"
-    echo "  --release-name NAME        Specify the release name for Chaos Mesh (default: 'chaos-mesh')"
-    echo "  --namespace NS             Specify the namespace for Chaos Mesh (default: 'chaos-mesh')"
-    echo "  --version VER              Specify the version of Chaos Mesh (default: '2.6.2')"
-    echo "  --openshift                Indicate that the script is running in an OpenShift environment"
-    echo ""
-    echo "Example:"
-    echo "  $0 --install --release-name my-chaos --namespace my-namespace --version 2.6.2"
-}
-
-# Function to echo success messages in green with a [SUCCESS] prefix
-echo_success() {
-    echo -e "\033[0;32m[SUCCESS] $1\033[0m"
-}
-
-# Function to echo warning messages in yellow with a [WARNING] prefix
-echo_warning() {
-    echo -e "\033[0;33m[WARNING] $1\033[0m"
-}
-
-# Function to echo error messages in red with an [ERROR] prefix
-echo_error() {
-    echo -e "\033[0;31m[ERROR] $1\033[0m"
-}
-
-#####################################################################################################################
-#####################################################################################################################
-#####################################################################################################################
-
-#####################################################################################################################
 ########################################  MAIN OF THE PROGRAM ######################################################
 #####################################################################################################################
 main() {
@@ -296,6 +374,8 @@ main() {
     local uninstall_flag=false
     local openshift_flag=false
     local pod_chaos_flag=false
+    local network_chaos_flag=false
+    local experiment_name=""
 
     # Default values for variables
     local release_name="chaos-mesh"
@@ -324,6 +404,14 @@ main() {
                ;;
            --pod-chaos)
                pod_chaos_flag=true
+               shift
+               experiment_name="$1"
+               shift
+               ;;
+           --network-chaos)
+               network_chaos_flag=true
+               shift
+               experiment_name="$1"
                shift
                ;;
            --release-name)
@@ -367,11 +455,33 @@ main() {
     fi
 
     if $pod_chaos_flag; then
-        apply_podchaos
+        if [ -z "$experiment_name" ]; then
+            list_chaos "pod_chaos"
+        elif [ "$experiment_name" == "anubis-kafka-kill-random-leader" ]; then
+            local experiment_name=$(generate_experiment_name "anubis-kafka-kill-random-leader" "PodChaos")
+            apply_podchaos "${experiment_name}"
+            check_chaos_started "${experiment_name}" "PodChaos" "strimzi-kafka"
+            verify_kafka_throughput
+        # ADD MORE POD CHAOS EXPERIMENTS.. elif [  ]; then
+        else
+            list_chaos "pod_chaos"
+            exit 1
+        fi
+    fi
 
-        check_podchaos_started
-
-        verify_kafka_throughput
+    if $network_chaos_flag; then
+        if [ -z "$experiment_name" ]; then
+            list_chaos "network_chaos"
+        elif [ "$experiment_name" == "anubis-kafka-producers-fast-internal-network-delay-all" ]; then
+            local experiment_name=$(generate_experiment_name "anubis-kafka-producers-fast-internal-network-delay-all" "NetworkChaos")
+            apply_network_chaos_delay_to_internal_producers ${experiment_name}
+            check_chaos_started "${experiment_name}" "NetworkChaos" "strimzi-clients"
+            verify_kafka_throughput
+        # ADD MORE NETWORK CHAOS EXPERIMENTS.. elif [  ]; then
+        else
+            list_chaos "network_chaos"
+            exit 1
+        fi
     fi
 }
 

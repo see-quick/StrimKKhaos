@@ -1,0 +1,16 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: anubis-kafka-producers-fast-internal-network-delay-all-1
+  namespace: strimzi-clients
+spec:
+  action: delay
+  mode: all
+  selector:
+    labelSelectors:
+      app: "producer"
+      type: "fast-internal"
+  delay:
+    latency: "1000ms"
+    jitter: "3ms"
+  duration: "5m"  # Duration of the latency injection
