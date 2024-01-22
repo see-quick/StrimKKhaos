@@ -142,7 +142,7 @@ scrape_metrics_during_chaos() {
     done
 
     if [ $count -gt 0 ]; then
-        local average=$(echo "$total / $count" | bc -l)
+        local average=$(echo "$total / $count" | awk '{printf "%.2f", $1}')
         local round_average_two_decimals=$(round $average)
         echo "$round_average_two_decimals"
     else
@@ -164,7 +164,7 @@ build_query_expr() {
 }
 
 round() {
-  printf "%.2f" "$(echo "scale=2; $1/1" | bc -l)"
+    echo "$1" | awk '{printf "%.2f", $1}'
 }
 
 # Function to verify decrease in Kafka throughput

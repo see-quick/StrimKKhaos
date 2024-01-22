@@ -43,7 +43,6 @@ This setup is essential for the script to function correctly.
 - **helm**: This is the package manager for Kubernetes, used in the script for installing and uninstalling Chaos Mesh.
 - **jq**: This is a lightweight and flexible command-line JSON processor. The script uses jq for parsing JSON data, particularly when interacting with the Prometheus API.
 - **curl**: This command-line tool is used for transferring data from or to a server. In your script, curl is used to interact with the Prometheus server for metrics scraping.
-- **bc**: This is an arbitrary precision calculator language. The script uses bc for basic calculations, like computing averages.
 - **OpenShift CLI** (Optional for OpenShift environments): If the script is being run in an OpenShift environment (as indicated by the openshift_flag), the OpenShift CLI (oc) might be necessary for specific OpenShift-related commands.
 
 TODO:
