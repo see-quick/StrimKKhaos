@@ -136,7 +136,7 @@ scrape_metrics_during_chaos() {
 
     while [ $SECONDS -lt $end_time ]; do
         local result=$(curl -s -G --data-urlencode "query=$query_expr" "$PROMETHEUS_URL/api/v1/query" | jq -r '.data.result[0].value[1]')
-        total=$(echo "$total + $result" | awk '{print $1 + $2}')
+        total=$(echo "$total $result" | awk '{print $1 + $2}')
         count=$((count + 1))
         sleep $interval
     done
