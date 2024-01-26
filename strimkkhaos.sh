@@ -473,8 +473,8 @@ main() {
     if $pod_chaos_flag; then
         if [ -z "$experiment_name" ]; then
             list_chaos "pod_chaos"
-        elif [ "$experiment_name" == "anubis-kafka-kill-random-leader" ]; then
-            local experiment_name=$(generate_experiment_name "anubis-kafka-kill-random-leader" "PodChaos")
+        elif [ "$experiment_name" == "anubis-kafka-kill-random-pod" ]; then
+            local experiment_name=$(generate_experiment_name "anubis-kafka-kill-random-pod" "PodChaos")
             apply_podchaos "${experiment_name}"
             check_chaos_started "${experiment_name}" "PodChaos" "strimzi-kafka"
             verify_kafka_throughput
