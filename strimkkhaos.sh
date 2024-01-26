@@ -37,9 +37,16 @@ install_chaos_mesh() {
         --set chaosDaemon.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].preference.matchExpressions[0].values[1]=connect \
         --set chaosDaemon.tolerations[0].key=nodetype \
         --set chaosDaemon.tolerations[0].operator=Equal \
-        --set chaosDaemon.tolerations[0].value=connect \
+        --set chaosDaemon.tolerations[0].value=kafka \
         --set chaosDaemon.tolerations[0].effect=NoSchedule \
-        --version $cm_version
+        --set chaosDaemon.tolerations[1].key=nodetype \
+        --set chaosDaemon.tolerations[1].operator=Equal \
+        --set chaosDaemon.tolerations[1].value=connect \
+        --set chaosDaemon.tolerations[1].effect=NoSchedule \
+        --set chaosDaemon.tolerations[2].key=UpdateInProgress \
+        --set chaosDaemon.tolerations[2].operator=Exists \
+        --set chaosDaemon.tolerations[2].effect=PreferNoSchedule \
+          --version $cm_version
 
     # Wait for all Chaos Mesh pods to be running
     local retry_count=0
