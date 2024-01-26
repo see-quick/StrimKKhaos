@@ -7,6 +7,8 @@ spec:
   selector:
     labelSelectors:
       strimzi.io/kind: KafkaBridge
+    namespaces:
+      - strimzi-bridge
   target: Response
   port: 8080
   method: POST

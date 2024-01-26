@@ -1,0 +1,24 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: all-producers-network-extreme-slow-bandwidth
+  namespace: strimzi-clients
+spec:
+  action: bandwidth
+  mode: all
+  selector:
+    labelSelectors:
+      # targeting all producers in the cluster
+      app: "producer"
+  bandwidth:
+    #  rate is set to 100bps, which specifies the desired bandwidth rate limit.
+    #  limit is set higher than the rate to allow a small buffer of bytes in the queue, but given the extremely low rate, this would fill up quickly.
+    #  buffer is set to the same value as the limit, which allows some initial burst of traffic before the limit is strictly enforced.
+    #  peakrate is slightly higher than the rate to allow a small amount of bursting above the rate limit.
+    #  minburst corresponds to the size of the bucket in bytes, which allows for a minimal amount of data to be sent at the peak rate before the average rate of rate applies.
+    rate: '100bps' # Limits the bandwidth to 100 bits per second
+    limit: 1000    # Queue size limit (number of bytes)
+    buffer: 1000   # Maximum number of bytes that can be buffered
+    peakrate: 200  # Maximum consumption of bucket (bits per second)
+    minburst: 10   # Size of peakrate bucket (number of bytes)
+  duration: "10m"  # Duration of the latency injection

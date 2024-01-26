@@ -1,0 +1,16 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: fast-internal-producers-network-packet-duplicate
+  namespace: strimzi-clients
+spec:
+  action: duplicate
+  mode: all
+  selector:
+    labelSelectors:
+      app: "producer"
+      type: "fast-internal"
+  duplicate:
+    duplicate: "100"
+    correlation: "0"
+  duration: "5m"  # Duration of the latency injection

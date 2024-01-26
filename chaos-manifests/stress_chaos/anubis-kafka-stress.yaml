@@ -1,0 +1,21 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: kafka-node-stress-example
+  namespace: strimzi-kafka
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - strimzi-kafka
+    labelSelectors:
+      strimzi.io/kind: "Kafka"
+      strimzi.io/broker-role: "true"
+  stressors:
+    cpu:
+      workers: 1
+      load: 50 # Represents a 50% load on a single CPU core
+    memory:
+      workers: 1
+      size: '256MB' # Occupy 256MB of memory
+  duration: '5m' # Run the stress test for 5 minutes
