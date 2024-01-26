@@ -72,6 +72,18 @@ install_chaos_mesh() {
             echo_warning "'chaos-daemon' service account already has 'privileged' SCC. Skipping this step."
         fi
     fi
+
+    # This has to be here until fixed https://github.com/chaos-mesh/chaos-mesh/issues/4313
+    # Get all chaos-daemon pod names
+    daemon_pods=$(kubectl get pods -n chaos-mesh -o custom-columns=:metadata.name --no-headers | grep chaos-daemon)
+
+    # Loop over each daemon pod and execute the modprobe command
+    for pod in $daemon_pods; do
+      echo "Executing modprobe ebtables on pod: $pod"
+      kubectl exec -n chaos-mesh "$pod" -- modprobe ebtables
+    done
+
+    echo_success "All daemon pods have been processed."
 }
 
 # Function to uninstall Chaos Mesh using Helm and verify that all pods are deleted
