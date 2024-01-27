@@ -1,0 +1,21 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: kafka-node-all-intense-stress
+  namespace: strimzi-kafka
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - strimzi-kafka
+    labelSelectors:
+      strimzi.io/kind: "Kafka"
+      strimzi.io/broker-role: "true"
+  stressors:
+    cpu:
+      workers: 2  # Increase the number of workers to generate a higher CPU load
+      load: 100  # Represents full load on two CPU cores
+    memory:
+      workers: 4  # More workers to generate memory stress
+      size: '512MB' # Occupy more memory
+  duration: '10m' # Longer duration for the stress test
