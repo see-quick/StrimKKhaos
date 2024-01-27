@@ -385,6 +385,34 @@ generate_experiment_name() {
     echo "${base_name}-${next_number}"
 }
 
+# Function to clear all chaos experiments
+clear_all_chaos_experiments() {
+    echo "Clearing all Chaos experiments..."
+
+    # Deleting PodChaos resources
+    kubectl delete podchaos --all --all-namespaces
+
+    # Deleting NetworkChaos resources
+    kubectl delete networkchaos --all --all-namespaces
+
+    # Deleting HTTPChaos resources
+    kubectl delete httpchaos --all --all-namespaces
+
+    # Deleting StressChaos resources
+    kubectl delete stresschaos --all --all-namespaces
+
+    # Deleting DNSChaos resources
+    kubectl delete dnschaos --all --all-namespaces
+
+    # Deleting IOChaos resources
+    kubectl delete iochaos --all --all-namespaces
+
+    # Add similar commands for other chaos types if needed
+
+    echo_success "All Chaos experiments have been cleared."
+}
+
+
 #####################################################################################################################
 #####################################################################################################################
 #####################################################################################################################
@@ -459,6 +487,10 @@ main() {
            --openshift)
                openshift_flag=true
                shift
+               ;;
+           --clear-experiments)
+               clear_all_chaos_experiments
+               exit 0
                ;;
            *)
                echo_error "Unknown option $key"
