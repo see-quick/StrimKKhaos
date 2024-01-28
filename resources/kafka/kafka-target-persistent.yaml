@@ -1,7 +1,7 @@
 apiVersion: kafka.strimzi.io/v1beta2
 kind: Kafka
 metadata:
-  name: my-cluster
+  name: my-target-cluster
 spec:
   kafka:
     version: 3.6.1
@@ -11,10 +11,6 @@ spec:
         port: 9092
         type: internal
         tls: false
-      - name: tls
-        port: 9093
-        type: internal
-        tls: true
     config:
       offsets.topic.replication.factor: 3
       transaction.state.log.replication.factor: 3
@@ -53,7 +49,7 @@ spec:
               app.kubernetes.io/component: chaos-dns-server
               app.kubernetes.io/name: chaos-mesh
   zookeeper:
-    replicas: 3
+    replicas: 1
     storage:
       type: persistent-claim
       size: 100Gi
@@ -74,7 +70,7 @@ spec:
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: kafka-metrics
+  name: kafka-metrics-target
   labels:
     app: strimzi
 data:
