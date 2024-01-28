@@ -397,6 +397,24 @@ clear_all_chaos_experiments() {
     info "All Chaos experiments have been cleared."
 }
 
+# Function to check if all machine pools are updating
+check_all_machine_pools_updating() {
+    # Get all machine pool names
+    local pools=$(kubectl get machineconfigpool -o jsonpath='{.items[*].metadata.name}')
+
+    for pool in $pools; do
+        info "Checking MachineConfigPool:${pool}"
+        local status=$(kubectl get machineconfigpool "$pool" -o jsonpath='{.status.conditions[?(@.type=="Updating")].status}')
+
+        if [ "$status" == "True" ]; then
+            warn "MachineConfigPool ${pool} is updating."
+            err "Execution of the current chaos experiment would be terminated because we want to have steady state of the application!"
+        else
+            info "MachineConfigPool ${pool} is not updating."
+            info "Continue with execution of the chaos experiment."
+        fi
+    done
+}
 
 #####################################################################################################################
 #####################################################################################################################
@@ -411,6 +429,7 @@ main() {
     local openshift_flag=false
     local pod_chaos_flag=false
     local network_chaos_flag=false
+    local enable_probes_flag=false
     local experiment_name=""
 
     # Default values for variables
@@ -477,6 +496,10 @@ main() {
                clear_all_chaos_experiments
                exit 0
                ;;
+           --enable-probes)
+               enable_probes_flag=true
+               shift
+               ;;
            *)
                err "Unknown option $key"
                usage
@@ -492,6 +515,10 @@ main() {
 
     if $uninstall_flag; then
         uninstall_chaos_mesh "$release_name" "$namespace"
+    fi
+
+    if $enable_probes_flag; then
+        check_all_machine_pools_updating
     fi
 
     if $pod_chaos_flag; then
