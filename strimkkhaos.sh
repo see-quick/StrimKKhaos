@@ -19,12 +19,12 @@ install_chaos_mesh() {
 
     # Check if the namespace exists, create if not
     if ! kubectl get namespace "$namespace" &> /dev/null; then
-        echo_warning "Namespace $namespace does not exist. Creating it..."
+        warn "Namespace $namespace does not exist. Creating it..."
         kubectl create namespace "$namespace"
-        echo_success "Namespace $namespace created."
+        info "Namespace $namespace created."
     fi
 
-    echo "Installing Chaos Mesh version $cm_version in namespace $namespace with release name $release_name"
+    info "Installing Chaos Mesh version $cm_version in namespace $namespace with release name $release_name"
     # Installation command (using Helm)
     helm install $release_name chaos-mesh/chaos-mesh -n $namespace \
         --set chaosDaemon.runtime=crio \
@@ -59,24 +59,24 @@ install_chaos_mesh() {
             all_pods_running=true
             break
         fi
-        echo "Waiting for Chaos Mesh pods to be running... (attempt: $((retry_count + 1))/$max_retries)"
+        info "Waiting for Chaos Mesh pods to be running... (attempt: $((retry_count + 1))/$max_retries)"
         sleep $sleep_duration
         retry_count=$((retry_count + 1))
     done
 
     if $all_pods_running; then
-        echo_success "Chaos Mesh installed successfully and all pods are running."
+        info "Chaos Mesh installed successfully and all pods are running."
     else
-        echo_error "Failed to verify the startup of all Chaos Mesh pods. Please check manually."
+        err "Failed to verify the startup of all Chaos Mesh pods. Please check manually."
         exit 1
     fi
 
     if [ "$openshift_flag" = true ]; then
         if ! oc get scc privileged -o jsonpath='{.users[]}' | $GREP -q "system:serviceaccount:$namespace:chaos-daemon"; then
             oc adm policy add-scc-to-user privileged system:serviceaccount:$namespace:chaos-daemon
-            echo_success "Added 'privileged' SCC to 'chaos-daemon' service account."
+            info "Added 'privileged' SCC to 'chaos-daemon' service account."
         else
-            echo_warning "'chaos-daemon' service account already has 'privileged' SCC. Skipping this step."
+            warn "'chaos-daemon' service account already has 'privileged' SCC. Skipping this step."
         fi
     fi
 
@@ -86,11 +86,11 @@ install_chaos_mesh() {
 
     # Loop over each daemon pod and execute the modprobe command
     for pod in $daemon_pods; do
-      echo "Executing modprobe ebtables on pod: $pod"
+      info "Executing modprobe ebtables on pod: $pod"
       kubectl exec -n chaos-mesh "$pod" -- modprobe ebtables
     done
 
-    echo_success "All daemon pods have been processed."
+    info "All daemon pods have been processed."
 }
 
 # Function to uninstall Chaos Mesh using Helm and verify that all pods are deleted
@@ -98,7 +98,7 @@ uninstall_chaos_mesh() {
     local release_name=$1
     local namespace=$2
 
-    echo "Uninstalling Chaos Mesh with release name $release_name from namespace $namespace"
+    info "Uninstalling Chaos Mesh with release name $release_name from namespace $namespace"
     # Uninstallation command (using Helm)
     helm uninstall $release_name -n $namespace
 
@@ -113,15 +113,15 @@ uninstall_chaos_mesh() {
             all_pods_deleted=true
             break
         fi
-        echo "Waiting for Chaos Mesh pods to be deleted... (attempt: $((retry_count + 1))/$max_retries)"
+        info "Waiting for Chaos Mesh pods to be deleted... (attempt: $((retry_count + 1))/$max_retries)"
         sleep $sleep_duration
         retry_count=$((retry_count + 1))
     done
 
     if $all_pods_deleted; then
-        echo_success "Chaos Mesh uninstalled successfully and all pods are deleted."
+        info "Chaos Mesh uninstalled successfully and all pods are deleted."
     else
-        echo_error "Failed to verify the deletion of all Chaos Mesh pods. Please check manually."
+        err "Failed to verify the deletion of all Chaos Mesh pods. Please check manually."
         exit 1
     fi
 }
@@ -165,7 +165,7 @@ scrape_metrics_during_chaos() {
         local round_average_two_decimals=$(round $average)
         echo "$round_average_two_decimals"
     else
-        echo_error "No metrics scraped."
+        err "No metrics scraped."
         return 1
     fi
 }
@@ -179,7 +179,7 @@ build_query_expr() {
         function_name="irate" # Use irate for short time range because, it calculates the rate of increase using the last two points in the provided range
     fi
 
-    echo "sum(${function_name}(kafka_server_brokertopicmetrics_messagesin_total{namespace=\"strimzi-kafka\",strimzi_io_cluster=\"anubis\",topic=~\".+\",topic!=\"\",kubernetes_pod_name=~\"anubis-.*\", clusterName=~\"worker-01\"}[${time_range}]))"
+    info "sum(${function_name}(kafka_server_brokertopicmetrics_messagesin_total{namespace=\"strimzi-kafka\",strimzi_io_cluster=\"anubis\",topic=~\".+\",topic!=\"\",kubernetes_pod_name=~\"anubis-.*\", clusterName=~\"worker-01\"}[${time_range}]))"
 }
 
 round() {
@@ -193,7 +193,7 @@ verify_kafka_throughput() {
     # NORMAL AVERAGE compute based on 1h
     local normal_average=$(curl -s -G --data-urlencode "query=$kafka_query_expr" "$PROMETHEUS_URL/api/v1/query" | jq -r '.data.result[0].value[1]')
     normal_average=$(round $normal_average)
-    echo "Normal average of messages in the past hour is $normal_average"
+    info "Normal average of messages in the past hour is $normal_average"
 
     kafka_query_expr=$(build_query_expr "5m")
 
@@ -206,9 +206,9 @@ verify_kafka_throughput() {
 
 
     if [[ $result -eq 1 ]]; then
-        echo_success "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average} which is lower than normal average i.e., ${normal_average}"
+        info "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average} which is lower than normal average i.e., ${normal_average}"
     else
-        echo_error "Kafka throughput did not decrease as expected: chaos average msg/s is ${chaos_average} which is greater than normal average i.e., ${normal_average}"
+        err "Kafka throughput did not decrease as expected: chaos average msg/s is ${chaos_average} which is greater than normal average i.e., ${normal_average}"
         exit 1
     fi
 }
@@ -216,8 +216,8 @@ verify_kafka_throughput() {
 # Function to list all Chaos experiments from YAML files
 # $1 - directory name (e.g., pod_chaos, network_chaos, http_chaos)
 list_chaos() {
-    echo_warning "You did not specify a concrete pod chaos"
-    echo "The list of the supported $1 are: "
+    warn "You did not specify a concrete pod chaos"
+    info "The list of the supported $1 are: "
 
     local directory="./chaos-manifests/$1"
     local files=("$directory"/*.yaml)
@@ -226,11 +226,11 @@ list_chaos() {
         for file in "${files[@]}"; do
             if [ -f "$file" ]; then
                 experiment_name=$($GREP 'name:' "$file" | awk '{print $2}' | head -1)
-                echo "- $experiment_name"
+                info "- $experiment_name"
             fi
         done
     else
-        echo "No $1 YAML files found in $directory."
+        info "No $1 YAML files found in $directory."
     fi
 }
 
@@ -258,10 +258,10 @@ apply_network_chaos_delay_to_internal_producers() {
 # Function to check if Chaos Mesh is installed
 check_chaos_mesh() {
     if ! kubectl get crd podchaos.chaos-mesh.org >/dev/null 2>&1; then
-        echo_warning "Chaos Mesh is not installed. Installing it now..."
+        warn "Chaos Mesh is not installed. Installing it now..."
         install_chaos_mesh
     else
-        echo_success "Chaos Mesh is installed."
+        info "Chaos Mesh is installed."
     fi
 }
 
@@ -283,21 +283,6 @@ usage() {
     echo "  $0 --install --release-name my-chaos --namespace my-namespace --version 2.6.2"
     echo "  $0 --pod-chaos anubis-kafka-kill-all-pods"
     echo "  $0 --network-chaos anubis-kafka-producers-fast-internal-network-delay-all"
-}
-
-# Function to echo success messages in green with a [SUCCESS] prefix
-echo_success() {
-    echo -e "\033[0;32m[SUCCESS] $1\033[0m"
-}
-
-# Function to echo warning messages in yellow with a [WARNING] prefix
-echo_warning() {
-    echo -e "\033[0;33m[WARNING] $1\033[0m"
-}
-
-# Function to echo error messages in red with an [ERROR] prefix
-echo_error() {
-    echo -e "\033[0;31m[ERROR] $1\033[0m"
 }
 
 apply_chaos() {
@@ -339,10 +324,10 @@ check_chaos_started() {
 
         # Determine if the experiment has started
         if [[ "$all_injected" == "True" && "$desired_phase" == "Run" ]]; then
-            echo_success "{$2} experiment has started."
+            info "{$2} experiment has started."
             return
         else
-            echo "Waiting for {$2} experiment to start... Next check in $sleep_duration seconds."
+            info "Waiting for {$2} experiment to start... Next check in $sleep_duration seconds."
             sleep $sleep_duration
 
             # Update the elapsed time and increase the sleep duration for the next iteration
@@ -356,7 +341,7 @@ check_chaos_started() {
         fi
     done
 
-    echo_error "{$2} experiment did not start within 5 minutes."
+    err "{$2} experiment did not start within 5 minutes."
     exit 1
 }
 
@@ -387,7 +372,7 @@ generate_experiment_name() {
 
 # Function to clear all chaos experiments
 clear_all_chaos_experiments() {
-    echo "Clearing all Chaos experiments..."
+    info "Clearing all Chaos experiments..."
 
     # Deleting PodChaos resources
     kubectl delete podchaos --all --all-namespaces
@@ -409,7 +394,7 @@ clear_all_chaos_experiments() {
 
     # Add similar commands for other chaos types if needed
 
-    echo_success "All Chaos experiments have been cleared."
+    info "All Chaos experiments have been cleared."
 }
 
 
@@ -493,7 +478,7 @@ main() {
                exit 0
                ;;
            *)
-               echo_error "Unknown option $key"
+               err "Unknown option $key"
                usage
                exit 1
                ;;
@@ -543,4 +528,4 @@ main() {
 # Call main function with all passed arguments
 main "$@"
 
-echo_success "Chaos testing script execution completed."
+info "Chaos testing script execution completed."

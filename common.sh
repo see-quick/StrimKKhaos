@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# ANSI color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
 # Initialize variables with default tool names
 FIND=find
 SED=sed
@@ -9,6 +15,7 @@ UNIQ=uniq
 SORT=sort
 SHA1SUM=sha1sum
 XARGS=xargs
+DATE=date
 READLINK=readlink
 
 # Function to check if a command exists
@@ -19,6 +26,9 @@ command_exists() {
 # Check if running on macOS and adjust tool names
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS system detected, attempt to use GNU tools
+    if command_exists gdate; then
+        DATE=gdate
+    fi
     if command_exists gfind; then
         FIND=gfind
     fi
@@ -48,8 +58,31 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     fi
 else
     # Non-macOS system, use default tools
-    echo "Non-macOS system detected, using default tools."
+    info "Non-macOS system detected, using default tools."
 fi
 
 # Export the variables so they are available in scripts that source this file
 export FIND SED GREP CP UNIQ SORT SHA1SUM XARGS READLINK
+
+function log() {
+    local level="${1}"
+    shift
+    echo -e "[$(date -u +"%Y-%m-%d %H:%M:%S")] [${level}]: ${@}"
+}
+
+function err_and_exit() {
+    log "${RED}ERROR${NC}" "${1}" >&2
+    exit ${2:-1}
+}
+
+function err() {
+    log "${RED}ERROR${NC}" "${1}" >&2
+}
+
+function info() {
+    log "${GREEN}INFO${NC}" "${1}"
+}
+
+function warn() {
+    log "${YELLOW}WARN${NC}" "${1}"
+}
