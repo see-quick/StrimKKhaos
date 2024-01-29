@@ -44,5 +44,6 @@ This setup is essential for the script to function correctly.
 - **jq**: This is a lightweight and flexible command-line JSON processor. The script uses jq for parsing JSON data, particularly when interacting with the Prometheus API.
 - **curl**: This command-line tool is used for transferring data from or to a server. In your script, curl is used to interact with the Prometheus server for metrics scraping.
 - **OpenShift CLI** (Optional for OpenShift environments): If the script is being run in an OpenShift environment (as indicated by the openshift_flag), the OpenShift CLI (oc) might be necessary for specific OpenShift-related commands.
+- **yq**: A command-line YAML processor that allows you to query and update YAML files. The script requires yq version 4.28.2 for processing YAML files, especially for modifying Chaos experiment specifications.
 
 TODO:

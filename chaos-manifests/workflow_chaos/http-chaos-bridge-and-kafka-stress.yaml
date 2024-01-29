@@ -1,0 +1,44 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: http-chaos-bridge-and-kafka-stress
+spec:
+  entry: parallel-of-2-chaos
+  templates:
+    - name: parallel-of-2-chaos
+      templateType: Parallel
+      deadline: 5m # 5 minutes for both experiments
+      children:
+        - workflow-stress-chaos
+        - workflow-http-chaos
+    - name: workflow-http-chaos
+      templateType: HTTPChaos
+      httpChaos:
+        mode: all
+        selector:
+          labelSelectors:
+            strimzi.io/kind: KafkaBridge
+          namespaces:
+            - myproject
+        target: Response
+        port: 8080
+        method: POST
+        path: '*'
+        abort: true
+    - name: workflow-stress-chaos
+      templateType: StressChaos
+      stressChaos:
+        mode: one
+        selector:
+          namespaces:
+            - myproject
+          labelSelectors:
+            strimzi.io/kind: "Kafka"
+            strimzi.io/broker-role: "true"
+        stressors:
+          cpu:
+            workers: 4 # Increase the number of workers to generate a higher CPU load
+            load: 100 # Represents full load on two CPU cores
+          memory:
+            workers: 4 # More workers to generate memory stress
+            size: '2GB' # Occupy more memory

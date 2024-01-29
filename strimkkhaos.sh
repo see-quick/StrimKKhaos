@@ -252,6 +252,52 @@ apply_network_chaos_delay_to_internal_producers() {
 }
 
 #####################################################################################################################
+########################################### WORKFLOW CHAOS ##########################################################
+#####################################################################################################################
+
+# Function to execute a complex workflow chaos experiment with unique name incrementation
+# $1 - base name of the workflow experiment
+execute_workflow_chaos() {
+    local base_workflow_name=$1
+    local workflow_yaml="./chaos-manifests/workflow_chaos/${base_workflow_name}.yaml"
+
+    if [ ! -f "$workflow_yaml" ]; then
+        err "Workflow chaos experiment named ${base_workflow_name} does not exist."
+        list_workflow_chaos
+        exit 1
+    fi
+
+    # Generate a unique workflow name
+    local unique_workflow_name=$(generate_unique_name "$base_workflow_name" "Workflow")
+
+    # Update only the .metadata.name field in the YAML file using yq
+    yq e ".metadata.name = \"$unique_workflow_name\"" -i "$workflow_yaml"
+
+    info "Executing Workflow Chaos experiment: ${unique_workflow_name}"
+    kubectl apply -f "$workflow_yaml"
+    info "Workflow Chaos experiment ${unique_workflow_name} has been applied."
+}
+
+# Function to list all Workflow Chaos experiments from YAML files
+list_workflow_chaos() {
+    info "Supported Workflow Chaos experiments: "
+
+    local directory="./chaos-manifests/workflow_chaos"
+    local files=("$directory"/*.yaml)
+
+    if [ -d "$directory" ] && [ ${#files[@]} -gt 0 ]; then
+        for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+                local workflow_name=$(basename "$file" .yaml)
+                info "- $workflow_name"
+            fi
+        done
+    else
+        err "No Workflow Chaos YAML files found in $directory."
+    fi
+}
+
+#####################################################################################################################
 ########################################### AUXILIARY METHODS #######################################################
 #####################################################################################################################
 
@@ -345,29 +391,24 @@ check_chaos_started() {
     exit 1
 }
 
-# Function to generate the next experiment name
-# $1 - experiment name without number suffix (i.e., 'kafka-leader-kill')
-# $2 - chaos type of experiment (e.g., PodChaos, NetworkChaos, StressChaos...)
-generate_experiment_name() {
+# Function to generate the next unique name for a given resource type
+# $1 - base name of the resource (i.e., 'kafka-leader-kill' for Chaos or 'parallel-http-bridge' for Workflow)
+# $2 - resource type (e.g., PodChaos, NetworkChaos, StressChaos, Workflow...)
+generate_unique_name() {
     local base_name=$1
+    local resource_type=$2
+    local max_suffix=0
+    local existing_names=$(kubectl get "$resource_type" --all-namespaces -o jsonpath="{.items[?(@.metadata.name startsWith ${base_name})].metadata.name}")
 
-    # Get the list of existing Chaos objects with the base name
-    local existing_names=$(kubectl get $2 --all-namespaces -o jsonpath="{.items[?(@.metadata.name startsWith ${base_name})].metadata.name}")
-
-    # Find the highest number used so far
-    local max_number=-1
     for name in $existing_names; do
-        local number=$(echo "$name" | $SED -e "s/^${base_name}-//")
-        if [[ "$number" =~ ^[0-9]+$ ]] && [ "$number" -gt "$max_number" ]; then
-            max_number=$number
+        local suffix=$(echo "$name" | sed -e "s/^${base_name}-//")
+        if [[ "$suffix" =~ ^[0-9]+$ ]] && [ "$suffix" -gt "$max_suffix" ]; then
+            max_suffix=$suffix
         fi
     done
 
-    # Generate the next number
-    local next_number=$((max_number + 1))
-
-    # Construct the full experiment name
-    echo "${base_name}-${next_number}"
+    local next_suffix=$((max_suffix + 1))
+    echo "${base_name}-${next_suffix}"
 }
 
 # Function to clear all chaos experiments
@@ -392,7 +433,8 @@ clear_all_chaos_experiments() {
     # Deleting IOChaos resources
     kubectl delete iochaos --all --all-namespaces
 
-    # Add similar commands for other chaos types if needed
+    # Deleting Workflow resources
+    kubectl delete workflow --all --all-namespaces
 
     info "All Chaos experiments have been cleared."
 }
@@ -532,6 +574,8 @@ main() {
     local enable_probes_flag=false
     local install_kubectl_flag=false
     local experiment_name=""
+    local workflow_chaos_flag=false
+    local workflow_name=""
 
     # Default values for variables
     local release_name="chaos-mesh"
@@ -606,6 +650,12 @@ main() {
                install_kubectl_flag=true
                shift
                ;;
+           --workflow-chaos)
+               workflow_chaos_flag=true
+               shift
+               workflow_name="$1"
+               shift
+               ;;
            *)
                err "Unknown option $key"
                usage
@@ -659,6 +709,10 @@ main() {
             list_chaos "network_chaos"
             exit 1
         fi
+    fi
+
+    if $workflow_chaos_flag; then
+        execute_workflow_chaos "$workflow_name"
     fi
 }
 
