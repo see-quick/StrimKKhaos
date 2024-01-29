@@ -416,6 +416,106 @@ check_all_machine_pools_updating() {
     done
 }
 
+# is_less_version_than
+#
+# Compares two version strings to determine if the first version is less than the second.
+#
+# @param $1 First version string to compare.
+# @param $2 Second version string to compare.
+# @return Returns 0 (true) if $1 is less than $2, 1 (false) otherwise.
+#
+# Usage example:
+# if is_less_version_than "1.2.3" "1.2.4"; then
+#     echo "1.2.3 is less than 1.2.4"
+# fi
+is_less_version_than() {
+    compare_versions $1 $2
+    if [ $? == 2 ];  then
+        return 0
+    fi
+
+    return 1
+}
+
+# compare_versions
+#
+# Compares two version strings.
+#
+# @param $1 First version string.
+# @param $2 Second version string.
+# @return Returns 0 if $1 equals $2, 1 if $1 is greater, and 2 if $1 is less.
+#
+# Usage example:
+# compare_versions "1.2.3" "1.2.4"
+# result=$?
+compare_versions () {
+    if [[ $1 == $2 ]]
+    then
+        return 0
+    fi
+    local IFS=.
+    local i ver1 ver2
+    read -ra ver1 <<< "$1"
+    read -ra ver2 <<< "$2"
+    # fill empty fields in ver1 with zeros
+    for ((i=${#ver1[@]}; i<${#ver2[@]}; i++))
+    do
+        ver1[i]=0
+    done
+    for ((i=0; i<${#ver1[@]}; i++))
+    do
+        if [[ -z ${ver2[i]} ]]
+        then
+            # fill empty fields in ver2 with zeros
+            ver2[i]=0
+        fi
+        if ((10#${ver1[i]} > 10#${ver2[i]}))
+        then
+            return 1
+        fi
+        if ((10#${ver1[i]} < 10#${ver2[i]}))
+        then
+            return 2
+        fi
+    done
+    return 0
+}
+
+# install_kubectl
+#
+# Installs the kubectl client at a specified version.
+#
+# @param $1 Version of kubectl to be installed.
+# @return Installs or updates kubectl to the specified version.
+#
+# Usage example:
+# install_kubectl "v1.20.0"
+install_kubectl() {
+    local kubectl_version=$1
+
+    info "Installing KUBECTL client with version ${kubectl_version}"
+
+    err_msg=$(kubectl version --client=true --output=yaml 2>&1 1>/dev/null)
+    if [ "$err_msg" == "" ]; then
+        current_version=$(kubectl version --client=true --output=yaml | grep gitVersion | sed 's/.*gitVersion: v\([0-9.]*\).*/\1/g')
+        target_version=$(echo "${kubectl_version}" | sed s/"${current_version}"//g)
+        if is_less_version_than "${current_version}" "${target_version}"; then
+            warn "Chaos Mesh requires kubectl version ${target_version} or higher!"
+        else
+            info "kubectl Version ${current_version} has been installed"
+        fi
+    else
+        err "${err_msg}"
+    fi
+
+    local KUBECTL_BIN="${HOME}/local/bin/kubectl"
+    local target_os=$(lowercase "$(uname)")
+
+    curl -Lo /tmp/kubectl https://storage.googleapis.com/kubernetes-release/release/${kubectl_version}/bin/${target_os}/amd64/kubectl
+    chmod +x /tmp/kubectl
+    mv /tmp/kubectl "${KUBECTL_BIN}"
+}
+
 #####################################################################################################################
 #####################################################################################################################
 #####################################################################################################################
@@ -430,12 +530,14 @@ main() {
     local pod_chaos_flag=false
     local network_chaos_flag=false
     local enable_probes_flag=false
+    local install_kubectl_flag=false
     local experiment_name=""
 
     # Default values for variables
     local release_name="chaos-mesh"
     local namespace="chaos-mesh"
     local cm_version="2.6.3"
+    local kubectl_version="latest"  # Default version, change as needed
 
     if [[ $# -eq 0 ]]; then
         usage
@@ -500,6 +602,10 @@ main() {
                enable_probes_flag=true
                shift
                ;;
+           --install-kubectl)
+               install_kubectl_flag=true
+               shift
+               ;;
            *)
                err "Unknown option $key"
                usage
@@ -519,6 +625,10 @@ main() {
 
     if $enable_probes_flag; then
         check_all_machine_pools_updating
+    fi
+
+    if $install_kubectl_flag; then
+        install_kubectl "$kubectl_version" "$install_kubectl_flag"
     fi
 
     if $pod_chaos_flag; then
