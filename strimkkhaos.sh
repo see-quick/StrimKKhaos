@@ -295,16 +295,18 @@ build_and_execute_query() {
 # Function to verify decrease in Kafka throughput
 verify_kafka_throughput() {
     local expr="kafka_server_brokertopicmetrics_messagesin_total"
-    local namespace="strimzi-kafka"
-    local additional_params="strimzi_io_cluster=\"anubis\",topic=~\".+\",topic!=\"\",kubernetes_pod_name=~\"anubis-.*\", clusterName=~\"worker-01\""
-    local aggregation_function="sum("
+    local namespace="myproject"
+    local additional_params="pod=~\"my-cluster-.*\",container=\"kafka\""
+    local aggregation_function="sum(irate("
 
-    # NORMAL AVERAGE computed based on 1h
-    local normal_average=$(scrape_metrics_during_chaos "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" 60 3600)
-    info "Normal average of messages in the past hour is $normal_average"
+    # Normal average computed based on 1h
+    local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" | jq -r '.[0].value[1]')
+    info "Normal average of messages in the past hour is ${normal_average}"
 
-    # Chaos AVERAGE computed based on 5m interval during the chaos duration
-    local chaos_average=$(scrape_metrics_during_chaos "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" 1 300)
+    sleep 5
+
+    # Chaos average computed based on 5m interval during the chaos duration
+    local chaos_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
 
     # Perform the comparison using awk
     result=$(echo "$chaos_average $normal_average" | awk '{print ($1 < $2) ? "1" : "0"}')
@@ -313,7 +315,6 @@ verify_kafka_throughput() {
         info "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average} which is lower than normal average i.e., ${normal_average}"
     else
         err "Kafka throughput did not decrease as expected: chaos average msg/s is ${chaos_average} which is greater than normal average i.e., ${normal_average}"
-        exit 1
     fi
 }
 
@@ -331,7 +332,7 @@ verify_kafka_cpu_usage() {
     local pods=($(echo "$average_cpu_usage" | jq -r '.[].metric.pod'))
     local averages=($(echo "$average_cpu_usage" | jq -r '.[].value[1]'))
 
-    sleep 300
+    sleep 5
 
     # Initialize total recent CPU usage and total average CPU usage
     local total_recent=0
@@ -357,7 +358,7 @@ verify_kafka_cpu_usage() {
         if [[ $(awk "BEGIN {print ($recent < $average) ? 1 : 0}") -eq 1 ]]; then
             info "CPU usage for pod $pod_name in the last 5 minutes is lower than the average: $recent < $average (average)"
         else
-            warn "CPU usage for pod $pod_name is normal: $recent >= $average (average)"
+            err "CPU usage for pod $pod_name is normal: $recent >= $average (average)"
         fi
 
         i=$((i + 1))
@@ -388,7 +389,7 @@ verify_kafka_memory_usage() {
     local pods=($(echo "$average_memory_usage" | jq -r '.[].metric.pod'))
     local averages=($(echo "$average_memory_usage" | jq -r '.[].value[1]'))
 
-    sleep 300
+    sleep 5
 
     # Initialize total recent memory usage and total average memory usage
     local total_recent=0
@@ -853,10 +854,13 @@ main() {
     if $workflow_chaos_flag; then
         execute_workflow_chaos "$workflow_name"
 
-        verify_kafka_throughput
-        # TODO: here we have to run this verification as process probably? because there is a sleep
-        # verify_kafka_memory_usage
-        # verify_kafka_cpu_usage
+        # run verification procedures in parallel
+        verify_kafka_throughput &
+        verify_kafka_memory_usage &
+        verify_kafka_cpu_usage &
+
+        info "Waiting for all background jobs to finish"
+        wait
     fi
 }
 
