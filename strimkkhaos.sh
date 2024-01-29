@@ -278,7 +278,7 @@ verify_kafka_throughput() {
     local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" | jq -r '.[0].value[1]')
     info "Normal average of messages in the past hour is ${normal_average}"
 
-    sleep 5
+    sleep 300
 
     # Chaos average computed based on 5m interval during the chaos duration
     local chaos_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
@@ -307,7 +307,7 @@ verify_kafka_cpu_usage() {
     local pods=($(echo "$average_cpu_usage" | jq -r '.[].metric.pod'))
     local averages=($(echo "$average_cpu_usage" | jq -r '.[].value[1]'))
 
-    sleep 5
+    sleep 300
 
     # Initialize total recent CPU usage and total average CPU usage
     local total_recent=0
@@ -363,7 +363,7 @@ verify_kafka_memory_usage() {
     local pods=($(echo "$average_memory_usage" | jq -r '.[].metric.pod'))
     local averages=($(echo "$average_memory_usage" | jq -r '.[].value[1]'))
 
-    sleep 5
+    sleep 300
 
     # Initialize total recent memory usage and total average memory usage
     local total_recent=0
@@ -408,11 +408,33 @@ verify_kafka_memory_usage() {
     fi
 }
 
-# TODO:  KafkaBridge producing bytes
-# "expr": "sum(rate(strimzi_bridge_kafka_producer_byte_total{topic != \"\"}[1m])) by (clientId, topic)",
+# Generic function to verify KafkaBridge metrics
+verify_kafka_bridge_metric() {
+    local metric_expr=$1
+    local metric_name=$2
+    local namespace="myproject"
+    local additional_params="topic != \"\""
+    local aggregation_function="sum(rate("
+    local aggregation_criteria="by (clientId, topic)"
 
-# TODO: KafkaBridge producing messages/records
-# "expr": "sum(rate(strimzi_bridge_kafka_producer_record_send_total{topic != \"\"}[1m])) by (clientId, topic)",
+    # Normal average computed based on 1h
+    local normal_average=$(build_and_execute_query "$metric_expr" "$namespace" "$additional_params" "$aggregation_function" "1h" "$aggregation_criteria" | jq -r '.[0].value[1]')
+    info "Normal average of $metric_name in the past hour is ${normal_average}"
+
+    sleep 300
+
+    # Chaos average computed based on 5m interval during the chaos duration
+    local chaos_average=$(build_and_execute_query "$metric_expr" "$namespace" "$additional_params" "$aggregation_function" "5m" "$aggregation_criteria" | jq -r '.[0].value[1]')
+
+    # Perform the comparison using awk
+    local result=$(echo "$chaos_average $normal_average" | awk '{print ($1 < $2) ? "1" : "0"}')
+
+    if [[ $result -eq 1 ]]; then
+        info "Verified expected decrease in ${metric_name} after chaos experiment: chaos average is ${chaos_average}[b] which is lower than normal average i.e., ${normal_average}[b]"
+    else
+        err "${metric_name} did not decrease as expected: chaos average is ${chaos_average}[b] which is greater than normal average i.e., ${normal_average}[b]"
+    fi
+}
 
 #####################################################################################################################
 ########################################### AUXILIARY METHODS #######################################################
@@ -843,9 +865,13 @@ main() {
         verify_kafka_throughput &
         verify_kafka_memory_usage &
         verify_kafka_cpu_usage &
+        verify_kafka_bridge_metric "strimzi_bridge_kafka_producer_byte_total" "KafkaBridge bytes produced" &
+        verify_kafka_bridge_metric "strimzi_bridge_kafka_producer_record_send_total" "KafkaBridge records sent" &
 
         info "Waiting for all background jobs to finish"
         wait
+
+        # TODO: add post checks that after successful Chaos experiment messages increased and overall load too
     fi
 }
 
