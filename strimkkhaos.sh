@@ -435,7 +435,7 @@ main() {
     # Default values for variables
     local release_name="chaos-mesh"
     local namespace="chaos-mesh"
-    local cm_version="2.6.2"
+    local cm_version="2.6.3"
 
     if [[ $# -eq 0 ]]; then
         usage
