@@ -840,9 +840,9 @@ main() {
         execute_workflow_chaos "$workflow_name"
 
         # run verification procedures in parallel
-        verify_kafka_throughput
-        verify_kafka_memory_usage
-        verify_kafka_cpu_usage
+        verify_kafka_throughput &
+        verify_kafka_memory_usage &
+        verify_kafka_cpu_usage &
 
         info "Waiting for all background jobs to finish"
         wait
