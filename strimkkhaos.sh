@@ -4,7 +4,7 @@
 source ./common.sh
 
 # Mandatory environment variables
-PROMETHEUS_URL="${PROMETHEUS_URL:-http://default-prometheus-url}" # Replace 'http://default-prometheus-url' with your default Prometheus URL
+PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}" # Replace 'http://default-prometheus-url' with your default Prometheus URL
 
 #####################################################################################################################
 ################################# CHAOS MESH INSTALL/UNINSTALL  #####################################################
@@ -127,10 +127,6 @@ uninstall_chaos_mesh() {
 }
 
 #####################################################################################################################
-#####################################################################################################################
-#####################################################################################################################
-
-#####################################################################################################################
 ################################################ POD CHAOS ##########################################################
 #####################################################################################################################
 
@@ -144,73 +140,8 @@ apply_podchaos() {
     apply_chaos $template_yaml "$1"
 }
 
-# Function to scrape Prometheus metrics at regular intervals
-scrape_metrics_during_chaos() {
-    local query_expr=$1
-    local interval=$2
-    local duration=$3
-    local end_time=$((SECONDS + duration))
-    local total=0
-    local count=0
-
-    while [ $SECONDS -lt $end_time ]; do
-        local result=$(curl -s -G --data-urlencode "query=$query_expr" "$PROMETHEUS_URL/api/v1/query" | jq -r '.data.result[0].value[1]')
-        total=$(echo "$total $result" | awk '{print $1 + $2}')
-        count=$((count + 1))
-        sleep $interval
-    done
-
-    if [ $count -gt 0 ]; then
-        local average=$(echo "$total $count" | awk '{print $1 / $2}')
-        local round_average_two_decimals=$(round $average)
-        echo "$round_average_two_decimals"
-    else
-        err "No metrics scraped."
-        return 1
-    fi
-}
-
-# Function to create Prometheus query expression with customizable time range
-build_query_expr() {
-    local time_range=$1
-    local function_name="rate"
-
-    if [[ $time_range == "5m" ]]; then
-        function_name="irate" # Use irate for short time range because, it calculates the rate of increase using the last two points in the provided range
-    fi
-
-    info "sum(${function_name}(kafka_server_brokertopicmetrics_messagesin_total{namespace=\"strimzi-kafka\",strimzi_io_cluster=\"anubis\",topic=~\".+\",topic!=\"\",kubernetes_pod_name=~\"anubis-.*\", clusterName=~\"worker-01\"}[${time_range}]))"
-}
-
 round() {
     echo "$1" | awk '{printf "%.2f", $1}'
-}
-
-# Function to verify decrease in Kafka throughput
-verify_kafka_throughput() {
-    local kafka_query_expr=$(build_query_expr "1h")
-
-    # NORMAL AVERAGE compute based on 1h
-    local normal_average=$(curl -s -G --data-urlencode "query=$kafka_query_expr" "$PROMETHEUS_URL/api/v1/query" | jq -r '.data.result[0].value[1]')
-    normal_average=$(round $normal_average)
-    info "Normal average of messages in the past hour is $normal_average"
-
-    kafka_query_expr=$(build_query_expr "5m")
-
-    local scrape_interval=1
-    local chaos_duration=300 # Duration of chaos experiment in seconds
-    local chaos_average=$(scrape_metrics_during_chaos "$kafka_query_expr" $scrape_interval $chaos_duration)
-
-    # Perform the comparison using awk
-    result=$(echo "$chaos_average $normal_average" | awk '{print ($1 < $2) ? "1" : "0"}')
-
-
-    if [[ $result -eq 1 ]]; then
-        info "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average} which is lower than normal average i.e., ${normal_average}"
-    else
-        err "Kafka throughput did not decrease as expected: chaos average msg/s is ${chaos_average} which is greater than normal average i.e., ${normal_average}"
-        exit 1
-    fi
 }
 
 # Function to list all Chaos experiments from YAML files
@@ -233,10 +164,6 @@ list_chaos() {
         info "No $1 YAML files found in $directory."
     fi
 }
-
-#####################################################################################################################
-#####################################################################################################################
-#####################################################################################################################
 
 #####################################################################################################################
 ############################################## NETWORK CHAOS ########################################################
@@ -296,6 +223,222 @@ list_workflow_chaos() {
         err "No Workflow Chaos YAML files found in $directory."
     fi
 }
+
+#####################################################################################################################
+############################################### PROMETHEUS ##########################################################
+#####################################################################################################################
+
+# Function to scrape Prometheus metrics at regular intervals
+scrape_metrics_during_chaos() {
+    local expr=$1
+    local namespace=$2
+    local additional_params=$3
+    local aggregation_function=$4
+    local time_range=$5
+    local interval=$6
+    local duration=$7
+    local aggregation_criteria=${8:-""} # Defaults to empty if not provided
+
+    local end_time=$((SECONDS + duration))
+    local total=0
+    local count=0
+
+    while [ $SECONDS -lt $end_time ]; do
+        local result=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "$time_range" "$aggregation_criteria" | jq -r '.[0].value[1]')
+        if [[ $result != null ]]; then
+            total=$(echo "$total $result" | awk '{print $1 + $2}')
+            count=$((count + 1))
+        fi
+        sleep $interval
+    done
+
+    if [ $count -gt 0 ]; then
+        local average=$(echo "$total $count" | awk '{print $1 / $2}')
+        local round_average_two_decimals=$(round $average)
+        echo "$round_average_two_decimals"
+    else
+        err "No metrics scraped."
+        exit 1
+    fi
+}
+
+# Function to build and execute a Prometheus query
+# $1 - Query expression
+# $2 - Namespace
+# $3 - Additional parameters (e.g., pod regex, container name)
+# $4 - Aggregation function (e.g., sum, rate)
+# $5 - Time range
+# $6 - Optional aggregation criteria (e.g., by (pod))
+build_and_execute_query() {
+    local expr=$1
+    local namespace=$2
+    local additional_params=$3
+    local aggregation_function=$4
+    local time_range=$5
+    local aggregation_criteria=${6:-""} # Defaults to empty if not provided
+
+    local open_parentheses_count=$(grep -o "(" <<< "$aggregation_function" | wc -l)
+    local close_parentheses=")"
+    for ((i=1; i<open_parentheses_count; i++)); do
+        close_parentheses+=")"
+    done
+
+    # Construct the query expression
+    local query_expr="${aggregation_function}${expr}{namespace=\"${namespace}\",${additional_params}}[${time_range}]${close_parentheses} ${aggregation_criteria}"
+
+    # Execute the query
+    local result=$(curl -s -G --data-urlencode "query=${query_expr}" "${PROMETHEUS_URL}/api/v1/query" | jq -r '.data.result')
+
+    echo "${result}"
+}
+
+# Function to verify decrease in Kafka throughput
+verify_kafka_throughput() {
+    local expr="kafka_server_brokertopicmetrics_messagesin_total"
+    local namespace="strimzi-kafka"
+    local additional_params="strimzi_io_cluster=\"anubis\",topic=~\".+\",topic!=\"\",kubernetes_pod_name=~\"anubis-.*\", clusterName=~\"worker-01\""
+    local aggregation_function="sum("
+
+    # NORMAL AVERAGE computed based on 1h
+    local normal_average=$(scrape_metrics_during_chaos "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" 60 3600)
+    info "Normal average of messages in the past hour is $normal_average"
+
+    # Chaos AVERAGE computed based on 5m interval during the chaos duration
+    local chaos_average=$(scrape_metrics_during_chaos "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" 1 300)
+
+    # Perform the comparison using awk
+    result=$(echo "$chaos_average $normal_average" | awk '{print ($1 < $2) ? "1" : "0"}')
+
+    if [[ $result -eq 1 ]]; then
+        info "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average} which is lower than normal average i.e., ${normal_average}"
+    else
+        err "Kafka throughput did not decrease as expected: chaos average msg/s is ${chaos_average} which is greater than normal average i.e., ${normal_average}"
+        exit 1
+    fi
+}
+
+# Function to verify CPU usage decrease for Kafka pods
+verify_kafka_cpu_usage() {
+    local expr="container_cpu_usage_seconds_total"
+    local namespace="myproject"
+    local additional_params="pod=~\"my-cluster-.*\",container=\"kafka\""
+    local aggregation_function="sum(rate("
+
+    # Fetch average CPU usage based on 1h for each pod
+    local average_cpu_usage=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" "by (pod)")
+
+    # Decode the JSON output to extract pod names and their average CPU usage
+    local pods=($(echo "$average_cpu_usage" | jq -r '.[].metric.pod'))
+    local averages=($(echo "$average_cpu_usage" | jq -r '.[].value[1]'))
+
+    sleep 300
+
+    # Initialize total recent CPU usage and total average CPU usage
+    local total_recent=0
+    local total_average=0
+
+    # Iterate over each pod and compare recent CPU usage with the average
+    local i=0
+    for pod in "${pods[@]}"; do
+        local pod_name=${pods[$i]}
+        local average=${averages[$i]}
+
+        # Fetch CPU usage during the last 5 minutes for the specific pod
+        local recent_cpu_usage=$(build_and_execute_query "$expr" "$namespace" "pod=\"${pod_name}\",container=\"kafka\"" "$aggregation_function" "5m")
+
+        # Extract the recent CPU usage value
+        local recent=$(echo "$recent_cpu_usage" | jq -r '.[0].value[1]')
+
+        # Aggregate total recent and average CPU usage
+        total_recent=$(awk "BEGIN {print $total_recent + $recent}")
+        total_average=$(awk "BEGIN {print $total_average + $average}")
+
+        # Display CPU usage for each pod
+        if [[ $(awk "BEGIN {print ($recent < $average) ? 1 : 0}") -eq 1 ]]; then
+            info "CPU usage for pod $pod_name in the last 5 minutes is lower than the average: $recent < $average (average)"
+        else
+            warn "CPU usage for pod $pod_name is normal: $recent >= $average (average)"
+        fi
+
+        i=$((i + 1))
+    done
+
+    # Perform the comparison using awk for total CPU usage
+    local result=$(awk "BEGIN {print ($total_recent < $total_average) ? 1 : 0}")
+
+    if [[ $result -eq 1 ]]; then
+        info "Total CPU usage for all Kafka pods in the last 5 minutes is lower than the average: $total_recent < $total_average (average)"
+    else
+        err "Total CPU usage for all Kafka pods is normal: $total_recent >= $total_average (average)"
+    fi
+}
+
+# TODO: double check calculation
+# Function to verify memory usage decrease for Kafka pods
+verify_kafka_memory_usage() {
+    local expr="container_memory_usage_bytes"
+    local namespace="myproject"
+    local additional_params="pod=~\"my-cluster-.*\",container=\"kafka\""
+    local aggregation_function="sum(rate("
+
+    # Fetch average memory usage based on 1h for each pod
+    local average_memory_usage=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" "by (pod)")
+
+    # Decode the JSON output to extract pod names and their average memory usage
+    local pods=($(echo "$average_memory_usage" | jq -r '.[].metric.pod'))
+    local averages=($(echo "$average_memory_usage" | jq -r '.[].value[1]'))
+
+    sleep 300
+
+    # Initialize total recent memory usage and total average memory usage
+    local total_recent=0
+    local total_average=0
+
+    # Iterate over each pod and compare recent memory usage with the average
+    local i=0
+    for pod in "${pods[@]}"; do
+        local pod_name=${pods[$i]}
+        local average=$(awk "BEGIN {print ${averages[$i]} / 1024 / 1024 / 1024}") # Convert bytes to GiB
+
+        # Fetch memory usage during the last 5 minutes for the specific pod
+        local recent_memory_usage=$(build_and_execute_query "$expr" "$namespace" "pod=\"${pod_name}\",container=\"kafka\"" "$aggregation_function" "5m")
+
+        # Extract the recent memory usage value and convert to MB
+        local recent=$(echo "$recent_memory_usage" | jq -r '.[0].value[1]')
+        recent=$(awk "BEGIN {print $recent / 1024 / 1024 / 1024}") # Convert bytes to GiB
+
+        # Aggregate total recent and average memory usage
+        total_recent=$(awk "BEGIN {print $total_recent + $recent}")
+        total_average=$(awk "BEGIN {print $total_average + $average}")
+
+        # Display memory usage for each pod in MB
+        if [[ $(awk "BEGIN {print ($recent < $average) ? 1 : 0}") -eq 1 ]]; then
+            info "Memory usage for pod $pod_name in the last 5 minutes is lower than the average: ${recent}GiB < ${average}GiB"
+        else
+            warn "Memory usage for pod $pod_name is normal: ${recent}GiB >= ${average}GiB"
+        fi
+        i=$((i + 1))
+    done
+
+    # Convert total values to MB for the final comparison
+    total_recent=$(awk "BEGIN {print $total_recent}")
+    total_average=$(awk "BEGIN {print $total_average}")
+
+    # Perform the comparison using awk for total memory usage
+    local result=$(awk "BEGIN {print ($total_recent < $total_average) ? 1 : 0}")
+
+    if [[ $result -eq 1 ]]; then
+        info "Total memory usage for all Kafka pods in the last 5 minutes is lower than the average: ${total_recent}GiB < ${total_average}GiB"
+    else
+        warn "Total memory usage for all Kafka pods is normal: ${total_recent}GiB >= ${total_average}GiB"
+    fi
+}
+
+# TODO:  KafkaBridge producing bytes
+# "expr": "sum(rate(strimzi_bridge_kafka_producer_byte_total{topic != \"\"}[1m])) by (clientId, topic)",
+
+# TODO: KafkaBridge producing messages/records
+# "expr": "sum(rate(strimzi_bridge_kafka_producer_record_send_total{topic != \"\"}[1m])) by (clientId, topic)",
 
 #####################################################################################################################
 ########################################### AUXILIARY METHODS #######################################################
@@ -559,10 +702,6 @@ install_kubectl() {
 }
 
 #####################################################################################################################
-#####################################################################################################################
-#####################################################################################################################
-
-#####################################################################################################################
 ########################################  MAIN OF THE PROGRAM ######################################################
 #####################################################################################################################
 main() {
@@ -713,6 +852,11 @@ main() {
 
     if $workflow_chaos_flag; then
         execute_workflow_chaos "$workflow_name"
+
+        verify_kafka_throughput
+        # TODO: here we have to run this verification as process probably? because there is a sleep
+        # verify_kafka_memory_usage
+        # verify_kafka_cpu_usage
     fi
 }
 
