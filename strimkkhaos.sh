@@ -144,26 +144,6 @@ round() {
     echo "$1" | awk '{printf "%.2f", $1}'
 }
 
-# Function to list all Chaos experiments from YAML files
-# $1 - directory name (e.g., pod_chaos, network_chaos, http_chaos)
-list_chaos() {
-    warn "You did not specify a concrete pod chaos"
-    info "The list of the supported $1 are: "
-
-    local directory="./chaos-manifests/$1"
-    local files=("$directory"/*.yaml)
-
-    if [ -d "$directory" ] && [ ${#files[@]} -gt 0 ]; then
-        for file in "${files[@]}"; do
-            if [ -f "$file" ]; then
-                experiment_name=$($GREP 'name:' "$file" | awk '{print $2}' | head -1)
-                info "- $experiment_name"
-            fi
-        done
-    else
-        info "No $1 YAML files found in $directory."
-    fi
-}
 
 #####################################################################################################################
 ############################################## NETWORK CHAOS ########################################################
@@ -171,11 +151,25 @@ list_chaos() {
 
 ################################### PRODUCER FAST INTERNAL NETWORK DELAY ############################################
 
-# $1 - unique experiment name
-apply_network_chaos_delay_to_internal_producers() {
-    local template_yaml="./chaos-manifests/network_chaos/anubis_kafka_producers_fast_internal_network_delay_all.yaml"
+execute_network_chaos() {
+    local base_network_chaos_name=$1
+    local network_chaos_yaml="./chaos-manifests/network_chaos/${base_network_chaos_name}.yaml"
 
-    apply_chaos $template_yaml "$1"
+    if [ ! -f "$network_chaos_yaml" ]; then
+        err "Network chaos experiment named ${base_network_chaos_name} does not exist."
+        list_chaos_experiments "network_chaos"
+        exit 1
+    fi
+
+    # Generate a unique workflow name
+    local unique_network_chaos_name=$(generate_unique_name "$base_network_chaos_name" "NetworkChaos")
+
+    # Update only the .metadata.name field in the YAML file using yq
+    yq e ".metadata.name = \"$unique_network_chaos_name\"" -i "$network_chaos_yaml"
+
+    info "Executing NetworkChaos experiment: ${unique_network_chaos_name}"
+    kubectl apply -f "$network_chaos_yaml"
+    info "NetworkChaos Chaos experiment ${unique_network_chaos_name} has been applied."
 }
 
 #####################################################################################################################
@@ -190,7 +184,7 @@ execute_workflow_chaos() {
 
     if [ ! -f "$workflow_yaml" ]; then
         err "Workflow chaos experiment named ${base_workflow_name} does not exist."
-        list_workflow_chaos
+        list_chaos_experiments "workflow_chaos"
         exit 1
     fi
 
@@ -203,25 +197,6 @@ execute_workflow_chaos() {
     info "Executing Workflow Chaos experiment: ${unique_workflow_name}"
     kubectl apply -f "$workflow_yaml"
     info "Workflow Chaos experiment ${unique_workflow_name} has been applied."
-}
-
-# Function to list all Workflow Chaos experiments from YAML files
-list_workflow_chaos() {
-    info "Supported Workflow Chaos experiments: "
-
-    local directory="./chaos-manifests/workflow_chaos"
-    local files=("$directory"/*.yaml)
-
-    if [ -d "$directory" ] && [ ${#files[@]} -gt 0 ]; then
-        for file in "${files[@]}"; do
-            if [ -f "$file" ]; then
-                local workflow_name=$(basename "$file" .yaml)
-                info "- $workflow_name"
-            fi
-        done
-    else
-        err "No Workflow Chaos YAML files found in $directory."
-    fi
 }
 
 #####################################################################################################################
@@ -374,7 +349,6 @@ verify_kafka_cpu_usage() {
     fi
 }
 
-# TODO: double check calculation
 # Function to verify memory usage decrease for Kafka pods
 verify_kafka_memory_usage() {
     local expr="container_memory_usage_bytes"
@@ -399,24 +373,23 @@ verify_kafka_memory_usage() {
     local i=0
     for pod in "${pods[@]}"; do
         local pod_name=${pods[$i]}
-        local average=$(awk "BEGIN {print ${averages[$i]} / 1024 / 1024 / 1024}") # Convert bytes to GiB
+        local average=$(awk "BEGIN {print ${averages[$i]}}")
 
         # Fetch memory usage during the last 5 minutes for the specific pod
         local recent_memory_usage=$(build_and_execute_query "$expr" "$namespace" "pod=\"${pod_name}\",container=\"kafka\"" "$aggregation_function" "5m")
 
-        # Extract the recent memory usage value and convert to MB
+        # Extract the recent memory usage value and convert
         local recent=$(echo "$recent_memory_usage" | jq -r '.[0].value[1]')
-        recent=$(awk "BEGIN {print $recent / 1024 / 1024 / 1024}") # Convert bytes to GiB
 
         # Aggregate total recent and average memory usage
         total_recent=$(awk "BEGIN {print $total_recent + $recent}")
         total_average=$(awk "BEGIN {print $total_average + $average}")
 
-        # Display memory usage for each pod in MB
+        # Display memory usage for each pod
         if [[ $(awk "BEGIN {print ($recent < $average) ? 1 : 0}") -eq 1 ]]; then
-            info "Memory usage for pod $pod_name in the last 5 minutes is lower than the average: ${recent}GiB < ${average}GiB"
+            warn "Memory usage for pod $pod_name in the last 5 minutes is lower than the average: ${recent} < ${average}"
         else
-            warn "Memory usage for pod $pod_name is normal: ${recent}GiB >= ${average}GiB"
+            info "Memory usage for pod $pod_name is normal: ${recent} >= ${average}"
         fi
         i=$((i + 1))
     done
@@ -429,9 +402,9 @@ verify_kafka_memory_usage() {
     local result=$(awk "BEGIN {print ($total_recent < $total_average) ? 1 : 0}")
 
     if [[ $result -eq 1 ]]; then
-        info "Total memory usage for all Kafka pods in the last 5 minutes is lower than the average: ${total_recent}GiB < ${total_average}GiB"
+        info "Total memory usage for all Kafka pods in the last 5 minutes is lower than the average: ${total_recent} < ${total_average}"
     else
-        warn "Total memory usage for all Kafka pods is normal: ${total_recent}GiB >= ${total_average}GiB"
+        warn "Total memory usage for all Kafka pods is normal: ${total_recent} >= ${total_average}"
     fi
 }
 
@@ -444,6 +417,27 @@ verify_kafka_memory_usage() {
 #####################################################################################################################
 ########################################### AUXILIARY METHODS #######################################################
 #####################################################################################################################
+
+# Generic function to list all Chaos experiments from YAML files
+# $1 - type of experiment (e.g., workflow_chaos, pod_chaos, network_chaos)
+list_chaos_experiments() {
+    local experiment_type=$1
+    info "Supported $experiment_type experiments: "
+
+    local directory="./chaos-manifests/$experiment_type"
+    local files=("$directory"/*.yaml)
+
+    if [ -d "$directory" ] && [ ${#files[@]} -gt 0 ]; then
+        for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+                local experiment_name=$(basename "$file" .yaml)
+                info "- $experiment_name"
+            fi
+        done
+    else
+        err "No $experiment_type YAML files found in $directory."
+    fi
+}
 
 # Function to check if Chaos Mesh is installed
 check_chaos_mesh() {
@@ -823,7 +817,7 @@ main() {
 
     if $pod_chaos_flag; then
         if [ -z "$experiment_name" ]; then
-            list_chaos "pod_chaos"
+            list_chaos_experiments "pod_chaos"
         elif [ "$experiment_name" == "anubis-kafka-kill-random-pod" ]; then
             local experiment_name=$(generate_experiment_name "anubis-kafka-kill-random-pod" "PodChaos")
             apply_podchaos "${experiment_name}"
@@ -831,33 +825,24 @@ main() {
             verify_kafka_throughput
         # ADD MORE POD CHAOS EXPERIMENTS.. elif [  ]; then
         else
-            list_chaos "pod_chaos"
+            list_chaos_experiments "pod_chaos"
             exit 1
         fi
     fi
 
     if $network_chaos_flag; then
-        if [ -z "$experiment_name" ]; then
-            list_chaos "network_chaos"
-        elif [ "$experiment_name" == "anubis-kafka-producers-fast-internal-network-delay-all" ]; then
-            local experiment_name=$(generate_experiment_name "anubis-kafka-producers-fast-internal-network-delay-all" "NetworkChaos")
-            apply_network_chaos_delay_to_internal_producers ${experiment_name}
-            check_chaos_started "${experiment_name}" "NetworkChaos" "strimzi-clients"
-            verify_kafka_throughput
-        # ADD MORE NETWORK CHAOS EXPERIMENTS.. elif [  ]; then
-        else
-            list_chaos "network_chaos"
-            exit 1
-        fi
+        execute_network_chaos "$experiment_name"
+
+        verify_kafka_throughput
     fi
 
     if $workflow_chaos_flag; then
         execute_workflow_chaos "$workflow_name"
 
         # run verification procedures in parallel
-        verify_kafka_throughput &
-        verify_kafka_memory_usage &
-        verify_kafka_cpu_usage &
+        verify_kafka_throughput
+        verify_kafka_memory_usage
+        verify_kafka_cpu_usage
 
         info "Waiting for all background jobs to finish"
         wait
