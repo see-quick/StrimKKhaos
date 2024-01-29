@@ -130,20 +130,31 @@ uninstall_chaos_mesh() {
 ################################################ POD CHAOS ##########################################################
 #####################################################################################################################
 
-############################################### KILLING LEADER ######################################################
+# Function to execute a PodChaos experiment with a unique name
+execute_pod_chaos() {
+    local base_pod_chaos_name=$1
+    local pod_chaos_yaml="./chaos-manifests/pod_chaos/${base_pod_chaos_name}.yaml"
 
-# Function to apply PodChaos
-# $1 - experiment name
-apply_podchaos() {
-    local template_yaml="./chaos-manifests/pod_chaos/anubis_kafka_kill_random_pod.yaml"
+    if [ ! -f "$pod_chaos_yaml" ]; then
+        err "PodChaos experiment named ${base_pod_chaos_name} does not exist."
+        list_chaos_experiments "pod_chaos"
+        exit 1
+    fi
 
-    apply_chaos $template_yaml "$1"
+    # Generate a unique experiment name
+    local unique_pod_chaos_name=$(generate_unique_name "$base_pod_chaos_name" "PodChaos")
+
+    # Update the .metadata.name field in the YAML file using yq
+    yq e ".metadata.name = \"$unique_pod_chaos_name\"" -i "$pod_chaos_yaml"
+
+    info "Executing PodChaos experiment: ${unique_pod_chaos_name}"
+    kubectl apply -f "$pod_chaos_yaml"
+    info "PodChaos experiment ${unique_pod_chaos_name} has been applied."
 }
 
 round() {
     echo "$1" | awk '{printf "%.2f", $1}'
 }
-
 
 #####################################################################################################################
 ############################################## NETWORK CHAOS ########################################################
@@ -278,7 +289,7 @@ verify_kafka_throughput() {
     local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" | jq -r '.[0].value[1]')
     info "Normal average of messages in the past hour is ${normal_average}"
 
-    sleep 300
+    sleep 5
 
     # Chaos average computed based on 5m interval during the chaos duration
     local chaos_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
@@ -731,7 +742,6 @@ main() {
     local install_kubectl_flag=false
     local experiment_name=""
     local workflow_chaos_flag=false
-    local workflow_name=""
 
     # Default values for variables
     local release_name="chaos-mesh"
@@ -809,7 +819,7 @@ main() {
            --workflow-chaos)
                workflow_chaos_flag=true
                shift
-               workflow_name="$1"
+               experiment_name="$1"
                shift
                ;;
            *)
@@ -838,18 +848,9 @@ main() {
     fi
 
     if $pod_chaos_flag; then
-        if [ -z "$experiment_name" ]; then
-            list_chaos_experiments "pod_chaos"
-        elif [ "$experiment_name" == "anubis-kafka-kill-random-pod" ]; then
-            local experiment_name=$(generate_experiment_name "anubis-kafka-kill-random-pod" "PodChaos")
-            apply_podchaos "${experiment_name}"
-            check_chaos_started "${experiment_name}" "PodChaos" "strimzi-kafka"
-            verify_kafka_throughput
-        # ADD MORE POD CHAOS EXPERIMENTS.. elif [  ]; then
-        else
-            list_chaos_experiments "pod_chaos"
-            exit 1
-        fi
+        execute_pod_chaos "$experiment_name"
+
+        verify_kafka_throughput
     fi
 
     if $network_chaos_flag; then
@@ -859,12 +860,15 @@ main() {
     fi
 
     if $workflow_chaos_flag; then
-        execute_workflow_chaos "$workflow_name"
+        execute_workflow_chaos "$experiment_name"
 
         # run verification procedures in parallel
         verify_kafka_throughput &
         verify_kafka_memory_usage &
         verify_kafka_cpu_usage &
+
+        # TODO: check for target cluster metrics
+
         verify_kafka_bridge_metric "strimzi_bridge_kafka_producer_byte_total" "KafkaBridge bytes produced" &
         verify_kafka_bridge_metric "strimzi_bridge_kafka_producer_record_send_total" "KafkaBridge records sent" &
 
