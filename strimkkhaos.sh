@@ -80,14 +80,17 @@ install_chaos_mesh() {
         fi
     fi
 
+    # Wait for chaos-daemon pods to be ready
+    wait_for_pods_ready "$namespace" "app.kubernetes.io/component=chaos-daemon"
+
     # This has to be here until fixed https://github.com/chaos-mesh/chaos-mesh/issues/4313
     # Get all chaos-daemon pod names
-    daemon_pods=$(kubectl get pods -n chaos-mesh -o custom-columns=:metadata.name --no-headers | grep chaos-daemon)
+    daemon_pods=$(kubectl get pods -n "$namespace" -o custom-columns=:metadata.name --no-headers | grep chaos-daemon)
 
     # Loop over each daemon pod and execute the modprobe command
     for pod in $daemon_pods; do
       info "Executing modprobe ebtables on pod: $pod"
-      kubectl exec -n chaos-mesh "$pod" -- modprobe ebtables
+      kubectl exec -n "$namespace" "$pod" -- modprobe ebtables
     done
 
     info "All daemon pods have been processed."
@@ -749,6 +752,45 @@ check_kubectl_installed() {
     info "kubectl is installed."
 }
 
+# Waits for all pods in a specified namespace and matching a label selector to be in the 'Ready' state.
+#
+# $1 - Namespace in which to check for the readiness of pods.
+# $2 - Label selector to identify the set of pods to check for readiness.
+wait_for_pods_ready() {
+    local namespace=$1
+    local label_selector=$2
+    local retry_count=0
+    local max_retries=20
+    local sleep_duration=10
+
+    info "Waiting for pods to be ready and running in namespace '$namespace' with label selector '$label_selector'..."
+
+    while [ $retry_count -lt $max_retries ]; do
+        local pods_ready=$(kubectl get pods -n "$namespace" -l "$label_selector" -o jsonpath='{.items[*].status.containerStatuses[*].ready}')
+        local all_pods_ready=true
+
+        # Check readiness for each container in each pod
+        for status in $pods_ready; do
+            if [[ "$status" != "true" ]]; then
+                all_pods_ready=false
+                break
+            fi
+        done
+
+        if $all_pods_ready; then
+            info "All pods are ready and running in namespace '$namespace'."
+            return
+        else
+            info "Waiting for pods to be ready and running... (attempt: $((retry_count + 1))/$max_retries)"
+            sleep $sleep_duration
+            retry_count=$((retry_count + 1))
+        fi
+    done
+
+    err "Timed out waiting for pods to be ready and running in namespace '$namespace'."
+    exit 1
+}
+
 #####################################################################################################################
 ########################################  MAIN OF THE PROGRAM ######################################################
 #####################################################################################################################
@@ -857,6 +899,7 @@ main() {
 
     if $uninstall_flag; then
         uninstall_chaos_mesh "$release_name" "$namespace"
+        exit 0
     fi
 
     check_kubectl_installed
