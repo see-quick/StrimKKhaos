@@ -472,16 +472,6 @@ list_chaos_experiments() {
     fi
 }
 
-# Function to check if Chaos Mesh is installed
-check_chaos_mesh() {
-    if ! kubectl get crd podchaos.chaos-mesh.org >/dev/null 2>&1; then
-        warn "Chaos Mesh is not installed. Installing it now..."
-        install_chaos_mesh
-    else
-        info "Chaos Mesh is installed."
-    fi
-}
-
 # Function to display usage information
 usage() {
     echo "Usage: $0 [options]"
@@ -734,6 +724,31 @@ install_kubectl() {
     mv /tmp/kubectl "${KUBECTL_BIN}"
 }
 
+# Function to check if Chaos Mesh is installed
+check_chaos_mesh_installed() {
+    if ! kubectl get crd podchaos.chaos-mesh.org &> /dev/null; then
+        err "Chaos Mesh is not installed. Please install it before running this script."
+        exit 1
+    fi
+
+    # Check if Chaos Mesh pods are running
+    if ! kubectl get pods -n "$namespace" | grep -q 'Running'; then
+        err "Chaos Mesh pods are not running in the '$namespace' namespace. Please ensure Chaos Mesh is operational before running this script."
+        exit 1
+    fi
+
+    info "Chaos Mesh is installed and operational."
+}
+
+# Function to check if kubectl is installed
+check_kubectl_installed() {
+    if ! command -v kubectl &> /dev/null; then
+        err "kubectl is not installed. Please install it before running this script."
+        exit 1
+    fi
+    info "kubectl is installed."
+}
+
 #####################################################################################################################
 ########################################  MAIN OF THE PROGRAM ######################################################
 #####################################################################################################################
@@ -834,6 +849,9 @@ main() {
                ;;
        esac
     done
+
+    check_chaos_mesh_installed
+    check_kubectl_installed
 
     # Execute commands based on flags
     if $install_flag; then
