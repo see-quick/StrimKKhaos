@@ -850,8 +850,8 @@ main() {
        esac
     done
 
-    check_chaos_mesh_installed
     check_kubectl_installed
+    check_chaos_mesh_installed
 
     # Execute commands based on flags
     if $install_flag; then
