@@ -10,12 +10,28 @@ PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}" # Replace 'http://defa
 ################################# CHAOS MESH INSTALL/UNINSTALL  #####################################################
 #####################################################################################################################
 
+download_helm_repo_if_not_present() {
+    # Install 'chaos-mesh' repo in helm if not already present
+    local repo_name=$1
+    local link=$2
+
+    # Check if the repo is already added
+    if ! helm repo list | grep -q "$repo_name"; then
+        info "Adding helm repository: $repo_name"
+        helm repo add $repo_name $link
+    else
+        info "Repository $repo_name already exists"
+    fi
+}
+
 # Function to install Chaos Mesh using Helm and verify that all pods are running
 install_chaos_mesh() {
     local release_name=$1
     local namespace=$2
     local cm_version=$3
     local openshift_flag=$4
+
+    download_helm_repo_if_not_present $release_name "https://charts.chaos-mesh.org"
 
     # Check if the namespace exists, create if not
     if ! kubectl get namespace "$namespace" &> /dev/null; then
