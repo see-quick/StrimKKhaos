@@ -292,7 +292,7 @@ verify_kafka_throughput() {
     local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" | jq -r '.[0].value[1]')
     info "Normal average of messages in the past hour is ${normal_average}"
 
-    sleep 5
+    sleep 300
 
     # Chaos average computed based on 5m interval during the chaos duration
     local chaos_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
