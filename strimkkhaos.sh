@@ -281,8 +281,8 @@ build_and_execute_query() {
 # Function to verify decrease in Kafka throughput
 verify_kafka_throughput() {
     local expr="kafka_server_brokertopicmetrics_messagesin_total"
-    local namespace="myproject"
-    local additional_params="pod=~\"my-cluster-.*\",container=\"kafka\""
+    local namespace="strimzi-kafka"
+    local additional_params="pod=~\"anubis-.*\",container=\"kafka\""
     local aggregation_function="sum(irate("
 
     # Normal average computed based on 1h
@@ -489,17 +489,22 @@ usage() {
     echo "  -h, --help                          Show this help message"
     echo "  --install                           Install Chaos Mesh"
     echo "  --uninstall                         Uninstall Chaos Mesh"
-    echo "  --pod-chaos experiment_name         Apply a specific PodChaos experiment"
-    echo "  --network-chaos experiment_name     Apply a specific NetworkChaos experiment"
-    echo "  --release-name NAME                 Specify the release name for Chaos Mesh (default: 'chaos-mesh')"
-    echo "  --namespace NS                      Specify the namespace for Chaos Mesh (default: 'chaos-mesh')"
-    echo "  --version VER                       Specify the version of Chaos Mesh (default: '2.6.2')"
-    echo "  --openshift                         Indicate that the script is running in an OpenShift environment"
+    echo "  --pod-chaos <experiment_name>       Apply a specific PodChaos experiment"
+    echo "  --network-chaos <experiment_name>   Apply a specific NetworkChaos experiment"
+    echo "  --workflow-chaos <experiment_name>  Apply a specific Workflow Chaos experiment"
+    echo "  --release-name <name>               Specify the release name for Chaos Mesh (default: 'chaos-mesh')"
+    echo "  --namespace <namespace>             Specify the namespace for Chaos Mesh (default: 'chaos-mesh')"
+    echo "  --version <version>                 Specify the version of Chaos Mesh (default: '2.6.3')"
+    echo "  --openshift                         Indicate the script is running in an OpenShift environment"
+    echo "  --clear-experiments                 Clear all Chaos experiments"
+    echo "  --enable-probes                     Enable probes for checking the state of the system"
+    echo "  --install-kubectl                   Install or update kubectl client"
     echo ""
     echo "Example:"
-    echo "  $0 --install --release-name my-chaos --namespace my-namespace --version 2.6.2"
+    echo "  $0 --install --release-name my-chaos --namespace my-namespace --version 2.6.3"
     echo "  $0 --pod-chaos anubis-kafka-kill-all-pods"
     echo "  $0 --network-chaos anubis-kafka-producers-fast-internal-network-delay-all"
+    echo "  $0 --workflow-chaos my-chaos-workflow"
 }
 
 apply_chaos() {
