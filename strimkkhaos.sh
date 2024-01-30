@@ -850,9 +850,6 @@ main() {
        esac
     done
 
-    check_kubectl_installed
-    check_chaos_mesh_installed
-
     # Execute commands based on flags
     if $install_flag; then
         install_chaos_mesh "$release_name" "$namespace" "$cm_version" "$openshift_flag"
@@ -861,6 +858,9 @@ main() {
     if $uninstall_flag; then
         uninstall_chaos_mesh "$release_name" "$namespace"
     fi
+
+    check_kubectl_installed
+    check_chaos_mesh_installed
 
     if $enable_probes_flag; then
         check_all_machine_pools_updating
