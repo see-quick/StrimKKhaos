@@ -940,6 +940,60 @@ check_openstack_token() {
     fi
 }
 
+# This function verifies if the Kafka cluster managed by Strimzi is fully ready and operational after a NodeChaos event.
+# It first checks the readiness of all Kafka pods within a specified namespace and then validates the readiness
+# of the StrimziPodSet associated with the Kafka cluster.
+#
+# Args:
+#   $1 (kafka_cluster_name) - Name of the Kafka cluster.
+#   $2 (namespace)          - Namespace where Kafka cluster is deployed.
+#
+# Returns:
+#   Exits with status 0 if all checks pass (i.e., all Kafka components are ready).
+#   Exits with status 1 if any of the readiness checks fail after the maximum number of retries.
+#
+# Usage example:
+#   check_kafka_readiness "my-cluster" "myproject"
+#
+check_kafka_readiness() {
+    local kafka_cluster_name=$1
+    local kafka_strimzi_podset_name=$1-kafka
+    local namespace=$2
+    local label_selector="strimzi.io/cluster=${kafka_cluster_name},strimzi.io/kind=Kafka"
+    local retry_count=0
+    local max_retries=20
+    local sleep_duration=10
+
+    info "Checking readiness of Kafka cluster: $kafka_cluster_name in namespace: $namespace"
+
+    while [ $retry_count -lt $max_retries ]; do
+        # Check Kafka pods readiness
+        if kubectl get pods -n "$namespace" -l "$label_selector" -o jsonpath="{.items[*].status.conditions[?(@.type=='Ready')].status}" | grep -q "True"; then
+            info "Kafka cluster $kafka_cluster_name pods are in READY state."
+
+            # Fetch the total number of pods and number of ready pods from StrimziPodSet status
+            local total_pods=$(kubectl get strimzipodset "$kafka_strimzi_podset_name" -n "$namespace" -o jsonpath="{.status.pods}")
+            local ready_pods=$(kubectl get strimzipodset "$kafka_strimzi_podset_name" -n "$namespace" -o jsonpath="{.status.readyPods}")
+
+            # Compare total pods with ready pods
+            if [ "$ready_pods" -eq "$total_pods" ]; then
+                info "StrimziPodSet $kafka_strimzi_podset_name is READY with $ready_pods/$total_pods pods ready."
+                return
+            else
+                warn "StrimziPodSet $kafka_strimzi_podset_name is NOT READY. $ready_pods/$total_pods pods ready. Retrying..."
+            fi
+        else
+            warn "Kafka cluster $kafka_cluster_name pods are not READY. Retrying..."
+        fi
+
+        sleep $sleep_duration
+        retry_count=$((retry_count + 1))
+    done
+
+    err "Failed to verify Kafka cluster $kafka_cluster_name readiness within the maximum retries."
+    exit 1
+}
+
 #####################################################################################################################
 ########################################  MAIN OF THE PROGRAM ######################################################
 #####################################################################################################################
@@ -1103,7 +1157,12 @@ main() {
         execute_node_chaos "$node_name"
 
         monitor_node_state_post_chaos "$node_name"
+<<<<<<< Updated upstream
         # TODO: add also Kafka thoughput...
+=======
+
+        check_kafka_readiness "my-cluster" "myproject"
+>>>>>>> Stashed changes
     fi
 }
 
