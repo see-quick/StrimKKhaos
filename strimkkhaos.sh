@@ -4,7 +4,7 @@
 source ./common.sh
 
 # Mandatory environment variables
-PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}" # Replace 'http://default-prometheus-url' with your default Prometheus URL
+PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}" # Replace 'http://127.0.0.1:9090' with your default Prometheus URL
 
 #####################################################################################################################
 ################################# CHAOS MESH INSTALL/UNINSTALL  #####################################################
@@ -227,6 +227,103 @@ execute_workflow_chaos() {
     info "Executing Workflow Chaos experiment: ${unique_workflow_name}"
     kubectl apply -f "$workflow_yaml"
     info "Workflow Chaos experiment ${unique_workflow_name} has been applied."
+}
+
+#####################################################################################################################
+############################################### NODE CHAOS ##########################################################
+#####################################################################################################################
+
+# Function to execute NodeChaos
+execute_node_chaos() {
+    local node_name=$1
+
+    # Validate that the node is a Kubernetes worker node
+        if ! list_kubernetes_worker_nodes | grep -q "^$node_name$"; then
+            err "Node $node_name is not a valid Kubernetes worker node."
+            info "Valid Kubernetes worker nodes are:"
+            list_kubernetes_worker_nodes
+            exit 1
+        fi
+
+    # Existing validation code...
+    check_node_readiness "$node_name"
+
+    # Check OpenStack token issuance
+    check_openstack_token
+
+    info "Performing NodeChaos on node: $node_name"
+
+    # Match the Kubernetes node with the OpenStack machine
+    local machine_name="$node_name"
+
+    # Perform soft reboot on the OpenStack machine
+    soft_reboot_openstack_machine "$machine_name"
+}
+
+# Function to soft reboot an OpenStack machine
+soft_reboot_openstack_machine() {
+    local machine_name=$1
+    info "Soft rebooting OpenStack machine: $machine_name"
+
+    # Execute the soft reboot command
+    openstack server reboot --soft "$machine_name"
+    if [ $? -ne 0 ]; then
+        err "Failed to soft reboot OpenStack machine: $machine_name"
+        exit 1
+    fi
+    info "Soft reboot initiated for machine: $machine_name"
+}
+
+# Function to check if a Kubernetes node is READY
+check_node_readiness() {
+    local node_name=$1
+    local node_state=$(kubectl get nodes "$node_name" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
+
+    if [ "$node_state" != "True" ]; then
+        err "Node $node_name is not in READY state."
+        exit 1
+    fi
+    info "Node $node_name is in READY state."
+}
+
+# Function to monitor node state changes after chaos injection
+monitor_node_state_post_chaos() {
+    local node_name=$1
+    local max_wait_time=600 # Maximum wait time of 10 minutes
+    local wait_interval=10 # Check every 10 seconds
+    local node_ready
+    local stage=1 # Start with stage 1
+
+    info "Monitoring node state changes for $node_name node chaos..."
+
+    while [ $stage -le 2 ]; do
+        # Get the current 'Ready' condition status of the node
+        node_ready=$(kubectl get node "$node_name" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
+
+        case $stage in
+            1) # Stage 1: Wait for Node to become NotReady
+                if [ "$node_ready" != "True" ]; then
+                    info "Node $node_name has become NotReady. Proceeding to Stage 2."
+                    stage=2 # Proceed to stage 2
+                else
+                    info "Waiting for Node $node_name to become NotReady..."
+                fi
+                ;;
+            2) # Stage 2: Wait for Node to recover to Ready
+                if [ "$node_ready" == "True" ]; then
+                    info "Node $node_name has recovered and is Ready."
+                    return # Node has recovered, exit the function
+                else
+                    info "Node $node_name is still NotReady. Waiting for recovery..."
+                fi
+                ;;
+        esac
+
+        sleep $wait_interval
+    done
+
+    err "Node $node_name did not recover to Ready state within the maximum wait time."
+    exit 1
 }
 
 #####################################################################################################################
@@ -501,6 +598,7 @@ usage() {
     echo "  --pod-chaos <experiment_name>       Apply a specific PodChaos experiment"
     echo "  --network-chaos <experiment_name>   Apply a specific NetworkChaos experiment"
     echo "  --workflow-chaos <experiment_name>  Apply a specific Workflow Chaos experiment"
+    echo "  --node-chaos <node_name>            Apply NodeChaos on a specific node (OpenStack only)"
     echo "  --release-name <name>               Specify the release name for Chaos Mesh (default: 'chaos-mesh')"
     echo "  --namespace <namespace>             Specify the namespace for Chaos Mesh (default: 'chaos-mesh')"
     echo "  --version <version>                 Specify the version of Chaos Mesh (default: '2.6.3')"
@@ -514,6 +612,7 @@ usage() {
     echo "  $0 --pod-chaos anubis-kafka-kill-all-pods"
     echo "  $0 --network-chaos anubis-kafka-producers-fast-internal-network-delay-all"
     echo "  $0 --workflow-chaos my-chaos-workflow"
+    echo "  $0 --node-chaos my-node-worker-01 (OpenStack only)"
 }
 
 apply_chaos() {
@@ -807,6 +906,22 @@ wait_for_pods_ready() {
     exit 1
 }
 
+# Function to list all Kubernetes worker nodes
+list_kubernetes_worker_nodes() {
+    info "Listing all Kubernetes worker nodes:"
+    kubectl get nodes | grep -v 'master' | awk '{if(NR>1) print $1}' | tr ' ' '\n'
+}
+
+# Function to check OpenStack token issuance
+check_openstack_token() {
+    info "Checking OpenStack token issuance..."
+    if ! openstack token issue > /dev/null 2>&1; then
+        err "Failed to issue OpenStack token. Please check your OpenStack credentials and environment."
+        exit 1
+    fi
+    info "Successfully issued OpenStack token."
+}
+
 #####################################################################################################################
 ########################################  MAIN OF THE PROGRAM ######################################################
 #####################################################################################################################
@@ -900,6 +1015,12 @@ main() {
                experiment_name="$1"
                shift
                ;;
+           --node-chaos)
+               node_chaos_flag=true
+               shift
+               node_name="$1"
+               shift
+               ;;
            *)
                err "Unknown option $key"
                usage
@@ -958,6 +1079,13 @@ main() {
         wait
 
         # TODO: add post checks that after successful Chaos experiment messages increased and overall load too
+    fi
+
+    if $node_chaos_flag; then
+        execute_node_chaos "$node_name"
+
+        monitor_node_state_post_chaos "$node_name"
+        # TODO: add also Kafka thoughput...
     fi
 }
 

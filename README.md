@@ -45,5 +45,6 @@ This setup is essential for the script to function correctly.
 - **curl**: This command-line tool is used for transferring data from or to a server. In your script, curl is used to interact with the Prometheus server for metrics scraping.
 - **OpenShift CLI** (Optional for OpenShift environments): If the script is being run in an OpenShift environment (as indicated by the openshift_flag), the OpenShift CLI (oc) might be necessary for specific OpenShift-related commands.
 - **yq**: A command-line YAML processor that allows you to query and update YAML files. The script requires yq version 4.28.2 for processing YAML files, especially for modifying Chaos experiment specifications.
+- **OpenStack CLI**: For NodeChaos experiments in OpenStack environments, the OpenStack command-line interface is necessary to control the underlying OpenStack instances. Ensure that the OpenStack CLI is installed and properly configured with the required credentials and endpoint information.
 
 TODO:
