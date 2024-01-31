@@ -1157,12 +1157,8 @@ main() {
         execute_node_chaos "$node_name"
 
         monitor_node_state_post_chaos "$node_name"
-<<<<<<< Updated upstream
-        # TODO: add also Kafka thoughput...
-=======
 
         check_kafka_readiness "my-cluster" "myproject"
->>>>>>> Stashed changes
     fi
 }
 
