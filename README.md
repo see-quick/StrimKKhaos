@@ -22,6 +22,7 @@ We have crafted a series of chaos experiments, each designed to challenge differ
 - Deliberate Kafka broker pod deletion
 - Operator functionality under network stress or pod failure
 - HTTP chaos (e.g., targeting healthcheck probes, HTTP servers etc.)
+- NodeChaos (e.g., restarting the worker node)
 - Multi-fault conditions
 
 Each scenario follows a template of defining a steady state, hypothesizing outcomes, designing the experiment, and monitoring and analyzing the results.
