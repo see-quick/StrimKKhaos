@@ -5,6 +5,7 @@ source ./common.sh
 
 # Mandatory environment variables
 PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}" # Replace 'http://127.0.0.1:9090' with your default Prometheus URL
+OPENSTACK_SCRIPT_PATH="${OPENSTACK_SCRIPT_PATH:-./default/openstack_script-tenant-name.sh}"
 
 #####################################################################################################################
 ################################# CHAOS MESH INSTALL/UNINSTALL  #####################################################
@@ -238,12 +239,12 @@ execute_node_chaos() {
     local node_name=$1
 
     # Validate that the node is a Kubernetes worker node
-        if ! list_kubernetes_worker_nodes | grep -q "^$node_name$"; then
-            err "Node $node_name is not a valid Kubernetes worker node."
-            info "Valid Kubernetes worker nodes are:"
-            list_kubernetes_worker_nodes
-            exit 1
-        fi
+    if ! list_kubernetes_worker_nodes | grep -q "^$node_name$"; then
+        err "Node $node_name is not a valid Kubernetes worker node."
+        info "Valid Kubernetes worker nodes are:"
+        list_kubernetes_worker_nodes
+        exit 1
+    fi
 
     # Existing validation code...
     check_node_readiness "$node_name"
@@ -916,10 +917,27 @@ list_kubernetes_worker_nodes() {
 check_openstack_token() {
     info "Checking OpenStack token issuance..."
     if ! openstack token issue > /dev/null 2>&1; then
-        err "Failed to issue OpenStack token. Please check your OpenStack credentials and environment."
-        exit 1
+        warn "Initial attempt to issue OpenStack token failed. Attempting to source environment file..."
+
+        # Assuming the path to your environment file is known and fixed
+
+        if [ -f "$OPENSTACK_SCRIPT_PATH" ]; then
+            source "$OPENSTACK_SCRIPT_PATH"
+            info "Environment file sourced. Trying to issue OpenStack token again..."
+
+            if ! openstack token issue > /dev/null 2>&1; then
+                err "Failed to issue OpenStack token after sourcing environment file. Please check your OpenStack credentials and environment."
+                exit 1
+            else
+                info "Successfully issued OpenStack token after sourcing environment file."
+            fi
+        else
+            err "Environment file ($OPENSTACK_SCRIPT_PATH) not found. Cannot source OpenStack credentials."
+            exit 1
+        fi
+    else
+        info "Successfully issued OpenStack token."
     fi
-    info "Successfully issued OpenStack token."
 }
 
 #####################################################################################################################
