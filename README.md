@@ -12,7 +12,7 @@ Chaos engineering is critical in a distributed system's lifecycle for testing it
 
 ## Choosing the Right Tool: Chaos Mesh
 
-After comparing various chaos engineering frameworks, Chaos Mesh stands out for its active contributions, comprehensive capabilities, and robust support within Kubernetes environments. As a CNCF Sandbox project, it is well-positioned for community-driven development and innovative approaches to chaos testing.
+After comparing various chaos engineering frameworks, Chaos Mesh stands out for its active contributions, comprehensive capabilities, and robust support within Kubernetes environments. As a CNCF Incubating project, it is well-positioned for community-driven development and innovative approaches to chaos testing.
 
 ## Chaos Testing Scenarios
 
