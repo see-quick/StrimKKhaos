@@ -6,7 +6,7 @@ source ./common.sh
 # Mandatory environment variables
 PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}" # Replace 'http://127.0.0.1:9090' with your default Prometheus URL
 OPENSTACK_SCRIPT_PATH="${OPENSTACK_SCRIPT_PATH:-./default/openstack_script-tenant-name.sh}"
-EXPERIMENT_SLEEP=5
+EXPERIMENT_SLEEP_SECONDS=300
 
 #####################################################################################################################
 ################################# CHAOS MESH INSTALL/UNINSTALL  #####################################################
@@ -423,7 +423,7 @@ verify_kafka_throughput() {
     local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" | jq -r '.[0].value[1]')
     info "Normal average of messages in the past hour is ${normal_average}"
 
-    sleep $EXPERIMENT_SLEEP
+    sleep $EXPERIMENT_SLEEP_SECONDS
 
     # Chaos average computed based on 5m interval during the chaos duration
     local chaos_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
@@ -452,7 +452,7 @@ verify_kafka_cpu_usage() {
     local pods=($(echo "$average_cpu_usage" | jq -r '.[].metric.pod'))
     local averages=($(echo "$average_cpu_usage" | jq -r '.[].value[1]'))
 
-    sleep $EXPERIMENT_SLEEP
+    sleep $EXPERIMENT_SLEEP_SECONDS
 
     # Initialize total recent CPU usage and total average CPU usage
     local total_recent=0
@@ -508,7 +508,7 @@ verify_kafka_memory_usage() {
     local pods=($(echo "$average_memory_usage" | jq -r '.[].metric.pod'))
     local averages=($(echo "$average_memory_usage" | jq -r '.[].value[1]'))
 
-    sleep $EXPERIMENT_SLEEP
+    sleep $EXPERIMENT_SLEEP_SECONDS
 
     # Initialize total recent memory usage and total average memory usage
     local total_recent=0
@@ -566,7 +566,7 @@ verify_kafka_bridge_metric() {
     local normal_average=$(build_and_execute_query "$metric_expr" "$namespace" "$additional_params" "$aggregation_function" "1h" "$aggregation_criteria" | jq -r '.[0].value[1]')
     info "Normal average of $metric_name in the past hour is ${normal_average}"
 
-    sleep $EXPERIMENT_SLEEP
+    sleep $EXPERIMENT_SLEEP_SECONDS
 
     # Chaos average computed based on 5m interval during the chaos duration
     local chaos_average=$(build_and_execute_query "$metric_expr" "$namespace" "$additional_params" "$aggregation_function" "5m" "$aggregation_criteria" | jq -r '.[0].value[1]')
