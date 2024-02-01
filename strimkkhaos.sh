@@ -6,6 +6,7 @@ source ./common.sh
 # Mandatory environment variables
 PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}" # Replace 'http://127.0.0.1:9090' with your default Prometheus URL
 OPENSTACK_SCRIPT_PATH="${OPENSTACK_SCRIPT_PATH:-./default/openstack_script-tenant-name.sh}"
+EXPERIMENT_SLEEP=5
 
 #####################################################################################################################
 ################################# CHAOS MESH INSTALL/UNINSTALL  #####################################################
@@ -151,8 +152,12 @@ uninstall_chaos_mesh() {
 #####################################################################################################################
 
 # Function to execute a PodChaos experiment with a unique name
+# $1 - experiment name
+# $2 - sut namespace
 execute_pod_chaos() {
     local base_pod_chaos_name=$1
+    local sut_namespace=$2
+
     local pod_chaos_yaml="./chaos-manifests/pod_chaos/${base_pod_chaos_name}.yaml"
 
     if [ ! -f "$pod_chaos_yaml" ]; then
@@ -164,8 +169,10 @@ execute_pod_chaos() {
     # Generate a unique experiment name
     local unique_pod_chaos_name=$(generate_unique_name "$base_pod_chaos_name" "PodChaos")
 
-    # Update the .metadata.name field in the YAML file using yq
+    # Update the .metadata.name and .metadata.namespace fields in the YAML file using yq
     yq e ".metadata.name = \"$unique_pod_chaos_name\"" -i "$pod_chaos_yaml"
+    yq e ".metadata.namespace = \"$sut_namespace\"" -i "$pod_chaos_yaml"
+    yq e "(.spec.selector.namespaces[0]) = \"$sut_namespace\"" -i "$pod_chaos_yaml"
 
     info "Executing PodChaos experiment: ${unique_pod_chaos_name}"
     kubectl apply -f "$pod_chaos_yaml"
@@ -184,6 +191,8 @@ round() {
 
 execute_network_chaos() {
     local base_network_chaos_name=$1
+    local sut_namespace=$2
+
     local network_chaos_yaml="./chaos-manifests/network_chaos/${base_network_chaos_name}.yaml"
 
     if [ ! -f "$network_chaos_yaml" ]; then
@@ -211,6 +220,8 @@ execute_network_chaos() {
 # $1 - base name of the workflow experiment
 execute_workflow_chaos() {
     local base_workflow_name=$1
+    local sut_namespace=$2
+
     local workflow_yaml="./chaos-manifests/workflow_chaos/${base_workflow_name}.yaml"
 
     if [ ! -f "$workflow_yaml" ]; then
@@ -224,6 +235,12 @@ execute_workflow_chaos() {
 
     # Update only the .metadata.name field in the YAML file using yq
     yq e ".metadata.name = \"$unique_workflow_name\"" -i "$workflow_yaml"
+    yq e ".metadata.namespace = \"$sut_namespace\"" -i "$workflow_yaml"
+
+
+    # Update namespaces for all selectors within HTTPChaos and StressChaos templates
+    yq e "(.spec.templates[] | select(.templateType == \"HTTPChaos\").httpChaos.selector.namespaces[0]) = \"$sut_namespace\"" -i "$workflow_yaml"
+    yq e "(.spec.templates[] | select(.templateType == \"StressChaos\").stressChaos.selector.namespaces[0]) = \"$sut_namespace\"" -i "$workflow_yaml"
 
     info "Executing Workflow Chaos experiment: ${unique_workflow_name}"
     kubectl apply -f "$workflow_yaml"
@@ -398,15 +415,15 @@ build_and_execute_query() {
 # Function to verify decrease in Kafka throughput
 verify_kafka_throughput() {
     local expr="kafka_server_brokertopicmetrics_messagesin_total"
-    local namespace="strimzi-kafka"
-    local additional_params="pod=~\"anubis-.*\",container=\"kafka\""
+    local namespace="$1"
+    local additional_params="pod=~\"$2\",container=\"kafka\""
     local aggregation_function="sum(irate("
 
     # Normal average computed based on 1h
     local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" | jq -r '.[0].value[1]')
     info "Normal average of messages in the past hour is ${normal_average}"
 
-    sleep 300
+    sleep $EXPERIMENT_SLEEP
 
     # Chaos average computed based on 5m interval during the chaos duration
     local chaos_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
@@ -424,8 +441,8 @@ verify_kafka_throughput() {
 # Function to verify CPU usage decrease for Kafka pods
 verify_kafka_cpu_usage() {
     local expr="container_cpu_usage_seconds_total"
-    local namespace="myproject"
-    local additional_params="pod=~\"my-cluster-.*\",container=\"kafka\""
+    local namespace="$1"
+    local additional_params="pod=~\"$2\",container=\"kafka\""
     local aggregation_function="sum(rate("
 
     # Fetch average CPU usage based on 1h for each pod
@@ -435,7 +452,7 @@ verify_kafka_cpu_usage() {
     local pods=($(echo "$average_cpu_usage" | jq -r '.[].metric.pod'))
     local averages=($(echo "$average_cpu_usage" | jq -r '.[].value[1]'))
 
-    sleep 300
+    sleep $EXPERIMENT_SLEEP
 
     # Initialize total recent CPU usage and total average CPU usage
     local total_recent=0
@@ -480,8 +497,8 @@ verify_kafka_cpu_usage() {
 # Function to verify memory usage decrease for Kafka pods
 verify_kafka_memory_usage() {
     local expr="container_memory_usage_bytes"
-    local namespace="myproject"
-    local additional_params="pod=~\"my-cluster-.*\",container=\"kafka\""
+    local namespace="$1"
+    local additional_params="pod=~\"$2\",container=\"kafka\""
     local aggregation_function="sum(rate("
 
     # Fetch average memory usage based on 1h for each pod
@@ -491,7 +508,7 @@ verify_kafka_memory_usage() {
     local pods=($(echo "$average_memory_usage" | jq -r '.[].metric.pod'))
     local averages=($(echo "$average_memory_usage" | jq -r '.[].value[1]'))
 
-    sleep 300
+    sleep $EXPERIMENT_SLEEP
 
     # Initialize total recent memory usage and total average memory usage
     local total_recent=0
@@ -540,7 +557,7 @@ verify_kafka_memory_usage() {
 verify_kafka_bridge_metric() {
     local metric_expr=$1
     local metric_name=$2
-    local namespace="myproject"
+    local namespace="strimzi-bridge"
     local additional_params="topic != \"\""
     local aggregation_function="sum(rate("
     local aggregation_criteria="by (clientId, topic)"
@@ -549,7 +566,7 @@ verify_kafka_bridge_metric() {
     local normal_average=$(build_and_execute_query "$metric_expr" "$namespace" "$additional_params" "$aggregation_function" "1h" "$aggregation_criteria" | jq -r '.[0].value[1]')
     info "Normal average of $metric_name in the past hour is ${normal_average}"
 
-    sleep 300
+    sleep $EXPERIMENT_SLEEP
 
     # Chaos average computed based on 5m interval during the chaos duration
     local chaos_average=$(build_and_execute_query "$metric_expr" "$namespace" "$additional_params" "$aggregation_function" "5m" "$aggregation_criteria" | jq -r '.[0].value[1]')
@@ -593,28 +610,31 @@ list_chaos_experiments() {
 usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -h, --help                          Show this help message"
-    echo "  --install                           Install Chaos Mesh"
-    echo "  --uninstall                         Uninstall Chaos Mesh"
-    echo "  --pod-chaos <experiment_name>       Apply a specific PodChaos experiment"
-    echo "  --network-chaos <experiment_name>   Apply a specific NetworkChaos experiment"
-    echo "  --workflow-chaos <experiment_name>  Apply a specific Workflow Chaos experiment"
-    echo "  --node-chaos <node_name>            Apply NodeChaos on a specific node (OpenStack only)"
-    echo "  --release-name <name>               Specify the release name for Chaos Mesh (default: 'chaos-mesh')"
-    echo "  --namespace <namespace>             Specify the namespace for Chaos Mesh (default: 'chaos-mesh')"
-    echo "  --version <version>                 Specify the version of Chaos Mesh (default: '2.6.3')"
-    echo "  --openshift                         Indicate the script is running in an OpenShift environment"
-    echo "  --clear-experiments                 Clear all Chaos experiments"
-    echo "  --enable-probes                     Enable probes for checking the state of the system"
-    echo "  --install-kubectl                   Install or update kubectl client"
+    echo "  -h, --help                          Show this help message."
+    echo "  --install                           Install Chaos Mesh in the specified namespace."
+    echo "  --uninstall                         Uninstall Chaos Mesh from the specified namespace."
+    echo "  --pod-chaos <experiment_name>       Apply a specific PodChaos experiment."
+    echo "  --network-chaos <experiment_name>   Apply a specific NetworkChaos experiment."
+    echo "  --workflow-chaos <experiment_name>  Apply a specific Workflow Chaos experiment."
+    echo "  --node-chaos <node_name>            Apply NodeChaos on a specific node. Intended for OpenStack environments."
+    echo "  --release-name <name>               Specify the release name for Chaos Mesh installation (default: 'chaos-mesh')."
+    echo "  --namespace <namespace>             Specify the namespace for Chaos Mesh operations (default: 'chaos-mesh')."
+    echo "  --version <version>                 Specify the version of Chaos Mesh to install (default: '2.6.3')."
+    echo "  --openshift                         Indicate the script is running in an OpenShift environment."
+    echo "  --clear-experiments                 Clear all Chaos experiments across all namespaces."
+    echo "  --enable-probes                     Enable probes for checking the state of the system before executing chaos experiments."
+    echo "  --install-kubectl                   Install or update the kubectl client to the specified version."
+    echo "  --sut-namespace <namespace>         Specify the namespace of the System Under Test (SUT) for chaos experiments."
+    echo "  --metrics-selector <selector>       Specify a metrics selector for Prometheus queries during chaos experiments."
     echo ""
-    echo "Example:"
+    echo "Examples:"
     echo "  $0 --install --release-name my-chaos --namespace my-namespace --version 2.6.3"
-    echo "  $0 --pod-chaos anubis-kafka-kill-all-pods"
-    echo "  $0 --network-chaos anubis-kafka-producers-fast-internal-network-delay-all"
-    echo "  $0 --workflow-chaos my-chaos-workflow"
-    echo "  $0 --node-chaos my-node-worker-01 (OpenStack only)"
+    echo "  $0 --pod-chaos anubis-kafka-kill-all-pods --sut-namespace myproject --metrics-selector 'my-cluster-*'"
+    echo "  $0 --network-chaos anubis-kafka-producers-fast-internal-network-delay-all --sut-namespace myproject --metrics-selector 'my-cluster-*'"
+    echo "  $0 --workflow-chaos my-chaos-workflow --sut-namespace myproject --metrics-selector 'my-cluster-*'"
+    echo "  $0 --node-chaos my-node-worker-01 --sut-namespace myproject --metrics-selector 'my-cluster-*' (OpenStack only)"
 }
+
 
 apply_chaos() {
     local template_yaml=$1
@@ -1005,7 +1025,6 @@ main() {
     local network_chaos_flag=false
     local enable_probes_flag=false
     local install_kubectl_flag=false
-    local experiment_name=""
     local workflow_chaos_flag=false
 
     # Default values for variables
@@ -1013,6 +1032,10 @@ main() {
     local namespace="chaos-mesh"
     local cm_version="2.6.3"
     local kubectl_version="latest"  # Default version, change as needed
+    local experiment_name=""
+    local chaos_type=""
+    local sut_namespace=""
+    local metrics_selector=""
 
     if [[ $# -eq 0 ]]; then
         usage
@@ -1035,15 +1058,52 @@ main() {
                shift
                ;;
            --pod-chaos)
-               pod_chaos_flag=true
+              pod_chaos_flag=true
+              chaos_type="pod-chaos"
+              shift
+              experiment_name="$1"
+              shift
+              ;;
+          --network-chaos)
+              network_chaos_flag=true
+              chaos_type="network-chaos"
+              shift
+              experiment_name="$1"
+              shift
+              ;;
+          --workflow-chaos)
+              workflow_chaos_flag=true
+              chaos_type="workflow-chaos"
+              shift
+              experiment_name="$1"
+              shift
+              ;;
+          --node-chaos)
+              node_chaos_flag=true
+              chaos_type="node-chaos"
+              shift
+              node_name="$1"
+              shift
+              shift
+              ;;
+           --sut-namespace)
+               if [[ -n $chaos_type && $chaos_type != "node-chaos" ]]; then
+                   sut_namespace="$2"
+               else
+                   err "The --sut-namespace option is not applicable to $chaos_type."
+                   exit 1
+               fi
                shift
-               experiment_name="$1"
                shift
                ;;
-           --network-chaos)
-               network_chaos_flag=true
+           --metrics-selector)
+               if [[ -n $chaos_type && $chaos_type != "node-chaos" ]]; then
+                   metrics_selector="$2"
+               else
+                   err "The --metrics-selector option is not applicable to $chaos_type."
+                   exit 1
+               fi
                shift
-               experiment_name="$1"
                shift
                ;;
            --release-name)
@@ -1081,18 +1141,6 @@ main() {
                install_kubectl_flag=true
                shift
                ;;
-           --workflow-chaos)
-               workflow_chaos_flag=true
-               shift
-               experiment_name="$1"
-               shift
-               ;;
-           --node-chaos)
-               node_chaos_flag=true
-               shift
-               node_name="$1"
-               shift
-               ;;
            *)
                err "Unknown option $key"
                usage
@@ -1122,25 +1170,33 @@ main() {
         install_kubectl "$kubectl_version" "$install_kubectl_flag"
     fi
 
+    # Additional checks after processing all options
+    if [[ $chaos_type == "pod-chaos" || $chaos_type == "network-chaos" || $chaos_type == "workflow-chaos" ]]; then
+        if [[ -z "$sut_namespace" ]]; then
+            err "You must specify a SUT namespace with --sut-namespace for $chaos_type."
+            exit 1
+        fi
+        if [[ -z "$metrics_selector" ]]; then
+            err "You must specify a metrics selector with --metrics-selector for $chaos_type."
+            exit 1
+        fi
+    fi
+
     if $pod_chaos_flag; then
-        execute_pod_chaos "$experiment_name"
+        execute_pod_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
 
-        verify_kafka_throughput
-    fi
+        verify_kafka_throughput "$sut_namespace" "$metrics_selector"
+    elif $network_chaos_flag; then
+        execute_network_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
 
-    if $network_chaos_flag; then
-        execute_network_chaos "$experiment_name"
-
-        verify_kafka_throughput
-    fi
-
-    if $workflow_chaos_flag; then
-        execute_workflow_chaos "$experiment_name"
+        verify_kafka_throughput "$sut_namespace" "$metrics_selector"
+    elif $workflow_chaos_flag; then
+        execute_workflow_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
 
         # run verification procedures in parallel
-        verify_kafka_throughput &
-        verify_kafka_memory_usage &
-        verify_kafka_cpu_usage &
+        verify_kafka_throughput "$sut_namespace" "$metrics_selector" &
+        verify_kafka_memory_usage "$sut_namespace" "$metrics_selector" &
+        verify_kafka_cpu_usage "$sut_namespace" "$metrics_selector" &
 
         # TODO: check for target cluster metrics
 
@@ -1149,16 +1205,13 @@ main() {
 
         info "Waiting for all background jobs to finish"
         wait
-
         # TODO: add post checks that after successful Chaos experiment messages increased and overall load too
-    fi
-
-    if $node_chaos_flag; then
+    elif $node_chaos_flag; then
         execute_node_chaos "$node_name"
 
         monitor_node_state_post_chaos "$node_name"
 
-        check_kafka_readiness "my-cluster" "myproject"
+        check_kafka_readiness "my-cluster" "strimzi-kafka"
     fi
 }
 

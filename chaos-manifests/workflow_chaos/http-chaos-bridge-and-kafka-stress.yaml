@@ -1,7 +1,8 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Workflow
 metadata:
-  name: http-chaos-bridge-and-kafka-stress
+  name: http-chaos-bridge-and-kafka-stress-6
+  namespace: myproject
 spec:
   entry: parallel-of-2-chaos
   templates:
