@@ -1152,6 +1152,7 @@ main() {
     # Execute commands based on flags
     if $install_flag; then
         install_chaos_mesh "$release_name" "$namespace" "$cm_version" "$openshift_flag"
+        exit 0
     fi
 
     if $uninstall_flag; then
