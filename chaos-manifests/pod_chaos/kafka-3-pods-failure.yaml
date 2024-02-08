@@ -1,15 +1,16 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: PodChaos
 metadata:
-  name: anubis-kafka-kill-random-pod
+  name: kafka-3-pods-failure-6
   namespace: myproject
 spec:
-  action: pod-kill
-  mode: one
+  action: pod-failure
+  mode: fixed
   selector:
     namespaces:
       - myproject
     labelSelectors:
       strimzi.io/kind: "Kafka"
       strimzi.io/broker-role: "true"
-  duration: "5m"
+  value: "3"
+  duration: "3m"

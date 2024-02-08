@@ -4,7 +4,7 @@ metadata:
   name: my-mirror-maker-2
 spec:
   version: 3.6.1
-  replicas: 1
+  replicas: 3
   connectCluster: "my-target-cluster" # Must be the target custer
   clusters:
     - alias: "my-cluster" # Source cluster

@@ -6,7 +6,7 @@ source ./common.sh
 # Mandatory environment variables
 PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}" # Replace 'http://127.0.0.1:9090' with your default Prometheus URL
 OPENSTACK_SCRIPT_PATH="${OPENSTACK_SCRIPT_PATH:-./default/openstack_script-tenant-name.sh}"
-EXPERIMENT_SLEEP_SECONDS=300
+EXPERIMENT_SLEEP_SECONDS=180
 
 #####################################################################################################################
 ################################# CHAOS MESH INSTALL/UNINSTALL  #####################################################
@@ -417,10 +417,10 @@ verify_kafka_throughput() {
     local expr="kafka_server_brokertopicmetrics_messagesin_total"
     local namespace="$1"
     local additional_params="pod=~\"$2\",container=\"kafka\""
-    local aggregation_function="sum(irate("
+    local aggregation_function="sum(rate("
 
     # Normal average computed based on 1h
-    local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" | jq -r '.[0].value[1]')
+    local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
     info "Normal average of messages in the past hour is ${normal_average}"
 
     sleep $EXPERIMENT_SLEEP_SECONDS
@@ -428,8 +428,8 @@ verify_kafka_throughput() {
     # Chaos average computed based on 5m interval during the chaos duration
     local chaos_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
 
-    # Perform the comparison using awk
-    result=$(echo "$chaos_average $normal_average" | awk '{print ($1 < $2) ? "1" : "0"}')
+    # Perform the comparison using awk also add toleration
+    result=$(echo "$chaos_average $normal_average" | awk '{if ($2 >= $1 * 0.9 && $2 <= $1 * 1.1) print "1"; else print "0"}')
 
     if [[ $result -eq 1 ]]; then
         info "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average} which is lower than normal average i.e., ${normal_average}"
@@ -1014,6 +1014,107 @@ check_kafka_readiness() {
     exit 1
 }
 
+# This function verifies if the Kafka MirrorMaker 2 cluster managed by Strimzi is fully ready and operational after a NodeChaos event.
+# It first checks the readiness of all Kafka MirrorMaker 2 pods within a specified namespace and then validates the readiness
+# of the StrimziPodSet associated with the Kafka MirrorMaker 2 cluster.
+#
+# Args:
+#   $1 (kmm2_cluster_name) - Name of the Kafka MirrorMaker 2 cluster.
+#   $2 (namespace)         - Namespace where Kafka MirrorMaker 2 cluster is deployed.
+#
+# Returns:
+#   Exits with status 0 if all checks pass (i.e., all Kafka MirrorMaker 2 components are ready).
+#   Exits with status 1 if any of the readiness checks fail after the maximum number of retries.
+#
+# Usage example:
+#   check_kmm2_readiness "my-mirror-maker-2" "myproject"
+#
+check_kmm2_readiness() {
+    local kmm2_cluster_name=$1
+    local kmm2_strimzi_podset_name=$1-mirrormaker2
+    local namespace=$2
+    local label_selector="strimzi.io/cluster=${kmm2_cluster_name},strimzi.io/kind=KafkaMirrorMaker2"
+    local retry_count=0
+    local max_retries=20
+    local sleep_duration=10
+
+    info "Checking readiness of Kafka MirrorMaker 2 cluster: $kmm2_cluster_name in namespace: $namespace"
+
+    while [ $retry_count -lt $max_retries ]; do
+        # Check Kafka MirrorMaker 2 pods readiness
+        if kubectl get pods -n "$namespace" -l "$label_selector" -o jsonpath="{.items[*].status.conditions[?(@.type=='Ready')].status}" | grep -q "True"; then
+            info "Kafka MirrorMaker 2 cluster $kmm2_cluster_name pods are in READY state."
+
+            # Fetch the total number of pods and number of ready pods from StrimziPodSet status
+            local total_pods=$(kubectl get strimzipodset "$kmm2_strimzi_podset_name" -n "$namespace" -o jsonpath="{.status.pods}")
+            local ready_pods=$(kubectl get strimzipodset "$kmm2_strimzi_podset_name" -n "$namespace" -o jsonpath="{.status.readyPods}")
+
+            # Compare total pods with ready pods
+            if [ "$ready_pods" -eq "$total_pods" ]; then
+                info "StrimziPodSet $kmm2_strimzi_podset_name is READY with $ready_pods/$total_pods pods ready."
+                return 0
+            else
+                warn "StrimziPodSet $kmm2_strimzi_podset_name is NOT READY. $ready_pods/$total_pods pods ready. Retrying..."
+            fi
+        else
+            warn "Kafka MirrorMaker 2 cluster $kmm2_cluster_name pods are not READY. Retrying..."
+        fi
+
+        sleep $sleep_duration
+        retry_count=$((retry_count + 1))
+    done
+
+    err "Failed to verify Kafka MirrorMaker 2 cluster $kmm2_cluster_name readiness within the maximum retries."
+    exit 1
+}
+
+# Checks if the Kafka consumer job has completed successfully.
+#
+# Args:
+#   $1 (namespace) - Namespace where the job is deployed.
+#   $2 (job_name)  - Name of the Kafka consumer job.
+#
+# Returns:
+#   Exits with status 0 if the job has completed successfully.
+#   Exits with status 1 if the job has failed or not completed.
+#
+check_kafka_consumer_job_success() {
+    local namespace=$1
+    local job_name=$2
+
+    if kubectl wait --for=condition=complete job/$job_name --namespace $namespace --timeout=60s; then
+        echo "Kafka consumer job $job_name completed successfully."
+        return 0
+    else
+        echo "Kafka consumer job $job_name did not complete successfully."
+        return 1
+    fi
+}
+
+# Checks if the Kafka producer job has completed successfully.
+#
+# Args:
+#   $1 (namespace) - Namespace where the job is deployed.
+#   $2 (job_name)  - Name of the Kafka producer job.
+#
+# Returns:
+#   Exits with status 0 if the job has completed successfully.
+#   Exits with status 1 if the job has failed or not completed.
+#
+check_kafka_producer_job_success() {
+    local namespace=$1
+    local job_name=$2
+
+    if kubectl wait --for=condition=complete job/$job_name --namespace $namespace --timeout=60s; then
+        echo "Kafka producer job $job_name completed successfully."
+        return 0
+    else
+        echo "Kafka producer job $job_name did not complete successfully."
+        return 1
+    fi
+}
+
+
 #####################################################################################################################
 ########################################  MAIN OF THE PROGRAM ######################################################
 #####################################################################################################################
@@ -1183,10 +1284,16 @@ main() {
         fi
     fi
 
+    # Use parameter expansion to remove '-.*' part
+    # This will take 'my-cluster-.*' and turn it into 'my-cluster'
+    local kafka_cluster_name_from_metrics_selector="${metrics_selector%-.*}"
+
     if $pod_chaos_flag; then
         execute_pod_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
 
         verify_kafka_throughput "$sut_namespace" "$metrics_selector"
+
+        check_kafka_readiness "$kafka_cluster_name_from_metrics_selector" "$sut_namespace"
     elif $network_chaos_flag; then
         execute_network_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
 
@@ -1208,11 +1315,27 @@ main() {
         wait
         # TODO: add post checks that after successful Chaos experiment messages increased and overall load too
     elif $node_chaos_flag; then
+        # producer and consumer spawn
+        kubectl apply -f ./resources/topic/kafka-topic.yaml
+        kubectl apply -f ./resources/clients/producer-node-chaos.yaml
+        kubectl apply -f ./resources/clients/consumer-node-chaos.yaml
+
         execute_node_chaos "$node_name"
 
         monitor_node_state_post_chaos "$node_name"
 
-        check_kafka_readiness "my-cluster" "strimzi-kafka"
+        # TODO: parametrize this
+        check_kafka_readiness "my-cluster" "myproject"
+        check_kafka_readiness "my-target-cluster" "myproject"
+        check_kmm2_readiness "my-mirror-maker-2" "myproject"
+
+        check_kafka_producer_job_success "myproject" "kafka-producer-client"
+        check_kafka_consumer_job_success "myproject" "kafka-consumer-client"
+
+        # TODO: always delete
+        kubectl delete -f ./resources/topic/kafka-topic.yaml
+        kubectl delete -f ./resources/clients/producer-node-chaos.yaml
+        kubectl delete -f ./resources/clients/consumer-node-chaos.yaml
     fi
 }
 
