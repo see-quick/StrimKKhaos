@@ -960,58 +960,71 @@ check_openstack_token() {
     fi
 }
 
-# This function verifies if the Kafka cluster managed by Strimzi is fully ready and operational after a NodeChaos event.
-# It first checks the readiness of all Kafka pods within a specified namespace and then validates the readiness
-# of the StrimziPodSet associated with the Kafka cluster.
-#
-# Args:
-#   $1 (kafka_cluster_name) - Name of the Kafka cluster.
-#   $2 (namespace)          - Namespace where Kafka cluster is deployed.
-#
-# Returns:
-#   Exits with status 0 if all checks pass (i.e., all Kafka components are ready).
-#   Exits with status 1 if any of the readiness checks fail after the maximum number of retries.
-#
-# Usage example:
-#   check_kafka_readiness "my-cluster" "myproject"
-#
-check_kafka_readiness() {
-    local kafka_cluster_name=$1
-    local kafka_strimzi_podset_name=$1-kafka
-    local namespace=$2
-    local label_selector="strimzi.io/cluster=${kafka_cluster_name},strimzi.io/kind=Kafka"
+# Checks readiness of all Kafka pods in a namespace
+wait_for_kafka_pods_readiness() {
+    local namespace=$1
     local retry_count=0
     local max_retries=20
     local sleep_duration=10
-
-    info "Checking readiness of Kafka cluster: $kafka_cluster_name in namespace: $namespace"
+    local all_pods_running=false
 
     while [ $retry_count -lt $max_retries ]; do
-        # Check Kafka pods readiness
-        if kubectl get pods -n "$namespace" -l "$label_selector" -o jsonpath="{.items[*].status.conditions[?(@.type=='Ready')].status}" | grep -q "True"; then
-            info "Kafka cluster $kafka_cluster_name pods are in READY state."
-
-            # Fetch the total number of pods and number of ready pods from StrimziPodSet status
-            local total_pods=$(kubectl get strimzipodset "$kafka_strimzi_podset_name" -n "$namespace" -o jsonpath="{.status.pods}")
-            local ready_pods=$(kubectl get strimzipodset "$kafka_strimzi_podset_name" -n "$namespace" -o jsonpath="{.status.readyPods}")
-
-            # Compare total pods with ready pods
-            if [ "$ready_pods" -eq "$total_pods" ]; then
-                info "StrimziPodSet $kafka_strimzi_podset_name is READY with $ready_pods/$total_pods pods ready."
-                return
-            else
-                warn "StrimziPodSet $kafka_strimzi_podset_name is NOT READY. $ready_pods/$total_pods pods ready. Retrying..."
-            fi
-        else
-            warn "Kafka cluster $kafka_cluster_name pods are not READY. Retrying..."
+        if kubectl get pods -n "$namespace" -l 'strimzi.io/kind=Kafka' -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -q "True"; then
+            all_pods_running=true
+            break
         fi
-
+        echo "Waiting for Kafka pods to be ready... (attempt: $((retry_count + 1))/$max_retries)"
         sleep $sleep_duration
         retry_count=$((retry_count + 1))
     done
 
-    err "Failed to verify Kafka cluster $kafka_cluster_name readiness within the maximum retries."
-    exit 1
+    if $all_pods_running; then
+        echo "All Kafka pods are ready."
+    else
+        echo "Failed to verify the readiness of all Kafka pods. Please check manually."
+        exit 1
+    fi
+}
+
+# Waits for Strimzi pod set readiness
+wait_for_strimzi_podset_readiness() {
+    local podset_name=$1
+    local namespace=$2
+    local retry_count=0
+    local max_retries=20
+    local sleep_duration=10
+    local all_pods_running=false
+
+    while [ $retry_count -lt $max_retries ]; do
+        local ready_pods=$(kubectl get strimzipodset "$podset_name" -n "$namespace" -o jsonpath='{.status.readyReplicas}')
+        local total_pods=$(kubectl get strimzipodset "$podset_name" -n "$namespace" -o jsonpath='{.status.replicas}')
+
+        if [ "$ready_pods" == "$total_pods" ]; then
+            all_pods_running=true
+            break
+        fi
+        echo "Waiting for Strimzi pod set $podset_name to be ready... (attempt: $((retry_count + 1))/$max_retries)"
+        sleep $sleep_duration
+        retry_count=$((retry_count + 1))
+    done
+
+    if $all_pods_running; then
+        echo "Strimzi pod set $podset_name is ready."
+    else
+        echo "Failed to verify the readiness of Strimzi pod set $podset_name. Please check manually."
+        exit 1
+    fi
+}
+
+# Waits for multiple Strimzi pod sets readiness
+wait_for_multiple_strimzi_podsets_readiness() {
+    local podsets="$1"
+    local namespace="$2"
+    IFS=',' read -ra PODSETS_ARRAY <<< "$podsets"
+
+    for podset_name in "${PODSETS_ARRAY[@]}"; do
+        wait_for_strimzi_podset_readiness "$podset_name" "$namespace"
+    done
 }
 
 # This function verifies if the Kafka MirrorMaker 2 cluster managed by Strimzi is fully ready and operational after a NodeChaos event.
@@ -1137,6 +1150,7 @@ main() {
     local chaos_type=""
     local sut_namespace=""
     local metrics_selector=""
+    local strimzi_pod_sets=""
 
     if [[ $# -eq 0 ]]; then
         usage
@@ -1242,6 +1256,11 @@ main() {
                install_kubectl_flag=true
                shift
                ;;
+           --strimzi-pod-sets)
+               strimzi_pod_sets="$2"
+               shift # past argument
+               shift # past value
+               ;;
            *)
                err "Unknown option $key"
                usage
@@ -1284,16 +1303,18 @@ main() {
         fi
     fi
 
-    # Use parameter expansion to remove '-.*' part
-    # This will take 'my-cluster-.*' and turn it into 'my-cluster'
-    local kafka_cluster_name_from_metrics_selector="${metrics_selector%-.*}"
-
     if $pod_chaos_flag; then
         execute_pod_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
 
         verify_kafka_throughput "$sut_namespace" "$metrics_selector"
 
-        check_kafka_readiness "anubis" "$sut_namespace"
+        # wait for Kafka pods readiness
+        wait_kafka_pods_readiness "$sut_namespace"
+
+        # If StrimziPodSets are provided, we also check readiness of them
+        if [[ -n "$strimzi_pod_sets" ]]; then
+            wait_for_multiple_strimzi_podsets_readiness "$strimzi_pod_sets" "$sut_namespace"
+        fi
     elif $network_chaos_flag; then
         execute_network_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
 
