@@ -1309,7 +1309,7 @@ main() {
         verify_kafka_throughput "$sut_namespace" "$metrics_selector"
 
         # wait for Kafka pods readiness
-        wait_kafka_pods_readiness "$sut_namespace"
+        wait_for_kafka_pods_readiness "$sut_namespace"
 
         # If StrimziPodSets are provided, we also check readiness of them
         if [[ -n "$strimzi_pod_sets" ]]; then
