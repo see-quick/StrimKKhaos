@@ -420,7 +420,7 @@ verify_kafka_throughput() {
     local aggregation_function="sum(rate("
 
     # Normal average computed based on 1h
-    local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
+    local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" | jq -r '.[0].value[1]')
     info "Normal average of messages in the past hour is ${normal_average}"
 
     sleep $EXPERIMENT_SLEEP_SECONDS
@@ -428,13 +428,13 @@ verify_kafka_throughput() {
     # Chaos average computed based on 5m interval during the chaos duration
     local chaos_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "5m" | jq -r '.[0].value[1]')
 
-    # Perform the comparison using awk also add toleration
-    result=$(echo "$chaos_average $normal_average" | awk '{if ($2 >= $1 * 0.9 && $2 <= $1 * 1.1) print "1"; else print "0"}')
+    # Perform the comparison to expect a decrease using awk
+    local result=$(awk -v ca="$chaos_average" -v na="$normal_average" 'BEGIN {print (ca < na) ? "1" : "0"}')
 
     if [[ $result -eq 1 ]]; then
-        info "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average} which is lower than normal average i.e., ${normal_average}"
+        info "Verified expected decrease in Kafka throughput after chaos experiment: chaos average msg/s is ${chaos_average}, which is less than the normal average of ${normal_average}."
     else
-        err "Kafka throughput did not decrease as expected: chaos average msg/s is ${chaos_average} which is greater than normal average i.e., ${normal_average}"
+        err "Kafka throughput did not decrease as expected: chaos average msg/s is ${chaos_average}, which is not less than the normal average of ${normal_average}."
     fi
 }
 
