@@ -1293,7 +1293,7 @@ main() {
 
         verify_kafka_throughput "$sut_namespace" "$metrics_selector"
 
-        check_kafka_readiness "$kafka_cluster_name_from_metrics_selector" "$sut_namespace"
+        check_kafka_readiness "anubis" "$sut_namespace"
     elif $network_chaos_flag; then
         execute_network_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
 
