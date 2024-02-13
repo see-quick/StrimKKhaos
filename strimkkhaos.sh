@@ -1352,6 +1352,17 @@ main() {
         wait
         # TODO: add post checks that after successful Chaos experiment messages increased and overall load too
     elif $node_chaos_flag; then
+        # Define a cleanup function
+        cleanup() {
+            echo "Performing cleanup tasks..."
+            kubectl delete -f ./resources/topic/kafka-topic.yaml
+            kubectl delete -f ./resources/clients/producer-node-chaos.yaml
+            kubectl delete -f ./resources/clients/consumer-node-chaos.yaml
+        }
+
+        # Trap EXIT signal to ensure cleanup runs even if the script exits prematurely
+        trap cleanup EXIT
+
         # producer and consumer spawn
         kubectl apply -f ./resources/topic/kafka-topic.yaml
         kubectl apply -f ./resources/clients/producer-node-chaos.yaml
@@ -1368,11 +1379,6 @@ main() {
 
         check_kafka_producer_job_success "myproject" "kafka-producer-client"
         check_kafka_consumer_job_success "myproject" "kafka-consumer-client"
-
-        # TODO: always delete
-        kubectl delete -f ./resources/topic/kafka-topic.yaml
-        kubectl delete -f ./resources/clients/producer-node-chaos.yaml
-        kubectl delete -f ./resources/clients/consumer-node-chaos.yaml
     fi
 }
 
