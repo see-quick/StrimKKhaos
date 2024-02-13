@@ -348,6 +348,19 @@ monitor_node_state_post_chaos() {
 ############################################### PROMETHEUS ##########################################################
 #####################################################################################################################
 
+# Function to check Prometheus availability
+check_prometheus_availability() {
+    local prometheus_url="$PROMETHEUS_URL/api/v1/query?query=up"
+    local response=$(curl -s -o /dev/null -w "%{http_code}" $prometheus_url)
+
+    if [ "$response" != "200" ]; then
+        err "Prometheus instance at $PROMETHEUS_URL is not available (HTTP status $response). Exiting script."
+        exit 1
+    else
+        info "Prometheus instance at $PROMETHEUS_URL is available."
+    fi
+}
+
 # Function to scrape Prometheus metrics at regular intervals
 scrape_metrics_during_chaos() {
     local expr=$1
@@ -418,6 +431,9 @@ verify_kafka_throughput() {
     local namespace="$1"
     local additional_params="pod=~\"$2\",container=\"kafka\""
     local aggregation_function="sum(rate("
+
+    # check that prometheus is available
+    check_prometheus_availability
 
     # Normal average computed based on 1h
     local normal_average=$(build_and_execute_query "$expr" "$namespace" "$additional_params" "$aggregation_function" "1h" | jq -r '.[0].value[1]')
