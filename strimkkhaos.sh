@@ -191,7 +191,7 @@ round() {
 
 execute_network_chaos() {
     local base_network_chaos_name=$1
-    local sut_namespace=$2
+    local clients_namespace=$2
 
     local network_chaos_yaml="./chaos-manifests/network_chaos/${base_network_chaos_name}.yaml"
 
@@ -204,8 +204,9 @@ execute_network_chaos() {
     # Generate a unique workflow name
     local unique_network_chaos_name=$(generate_unique_name "$base_network_chaos_name" "NetworkChaos")
 
-    # Update only the .metadata.name field in the YAML file using yq
+    # Update only the .metadata.name and .metadata.namespace field in the YAML file using yq
     yq e ".metadata.name = \"$unique_network_chaos_name\"" -i "$network_chaos_yaml"
+    yq e ".metadata.namespace = \"$clients_namespace\"" -i "$network_chaos_yaml"
 
     info "Executing NetworkChaos experiment: ${unique_network_chaos_name}"
     kubectl apply -f "$network_chaos_yaml"
@@ -1167,6 +1168,7 @@ main() {
     local sut_namespace=""
     local metrics_selector=""
     local strimzi_pod_sets=""
+    local clients_namespace=""
 
     if [[ $# -eq 0 ]]; then
         usage
@@ -1247,6 +1249,11 @@ main() {
                shift
                shift
                ;;
+           --clients-namespace)
+               clients_namespace="$2"
+               shift
+               shift
+               ;;
            --version)
                cm_version="$2"
                shift
@@ -1320,7 +1327,7 @@ main() {
     fi
 
     if $pod_chaos_flag; then
-        execute_pod_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
+        execute_pod_chaos "$experiment_name" "$sut_namespace"
 
         verify_kafka_throughput "$sut_namespace" "$metrics_selector"
 
@@ -1332,7 +1339,7 @@ main() {
             wait_for_multiple_strimzi_podsets_readiness "$strimzi_pod_sets" "$sut_namespace"
         fi
     elif $network_chaos_flag; then
-        execute_network_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
+        execute_network_chaos "$experiment_name" "$clients_namespace"
 
         verify_kafka_throughput "$sut_namespace" "$metrics_selector"
     elif $workflow_chaos_flag; then
