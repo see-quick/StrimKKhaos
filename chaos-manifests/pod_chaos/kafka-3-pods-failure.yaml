@@ -13,4 +13,4 @@ spec:
       strimzi.io/kind: "Kafka"
       strimzi.io/broker-role: "true"
   value: "3"
-  duration: "3m"
+  duration: "5m"
