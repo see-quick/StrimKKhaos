@@ -6,7 +6,7 @@ source ./common.sh
 # Mandatory environment variables
 PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}" # Replace 'http://127.0.0.1:9090' with your default Prometheus URL
 OPENSTACK_SCRIPT_PATH="${OPENSTACK_SCRIPT_PATH:-./default/openstack_script-tenant-name.sh}"
-EXPERIMENT_SLEEP_SECONDS=180
+EXPERIMENT_SLEEP_SECONDS=300
 
 #####################################################################################################################
 ################################# CHAOS MESH INSTALL/UNINSTALL  #####################################################
@@ -1028,44 +1028,49 @@ wait_for_kafka_pods_readiness() {
     fi
 }
 
-# Waits for Strimzi pod set readiness
 wait_for_strimzi_podset_readiness() {
     local podset_name=$1
-    local namespace=$2
     local retry_count=0
     local max_retries=20
     local sleep_duration=10
-    local all_pods_running=false
+    local all_namespaces=$(kubectl get strimzipodset --all-namespaces --field-selector metadata.name=$podset_name -o jsonpath="{.items[*].metadata.namespace}")
 
-    while [ $retry_count -lt $max_retries ]; do
-        local ready_pods=$(kubectl get strimzipodset "$podset_name" -n "$namespace" -o jsonpath='{.status.readyReplicas}')
-        local total_pods=$(kubectl get strimzipodset "$podset_name" -n "$namespace" -o jsonpath='{.status.replicas}')
+    echo "Checking readiness for Strimzi pod set: $podset_name..."
 
-        if [ "$ready_pods" == "$total_pods" ]; then
-            all_pods_running=true
-            break
+    for ns in $all_namespaces; do
+        while [ $retry_count -lt $max_retries ]; do
+            local ready_pods=$(kubectl get strimzipodset $podset_name -n $ns -o jsonpath='{.status.readyPods}')
+            local total_pods=$(kubectl get strimzipodset $podset_name -n $ns -o jsonpath='{.status.pods}')
+
+            echo "Namespace: $ns, Ready Pods: ${ready_pods}, Total Pods: $total_pods"
+
+            if [ "$ready_pods" -eq "$total_pods" ]; then
+                echo "StrimziPodSet $podset_name in namespace $ns is READY. ${ready_pods}/${total_pods} pods ready."
+                break
+            else
+                echo "StrimziPodSet $podset_name in namespace $ns is NOT READY. ${ready_pods}/${total_pods} pods ready. Retrying..."
+                sleep $sleep_duration
+                retry_count=$((retry_count + 1))
+            fi
+        done
+
+        if [ $retry_count -eq $max_retries ]; then
+            echo "Failed to verify the readiness of StrimziPodSet $podset_name in namespace $ns within the maximum retries. Please check manually."
+            exit 1
         fi
-        echo "Waiting for Strimzi pod set $podset_name to be ready... (attempt: $((retry_count + 1))/$max_retries)"
-        sleep $sleep_duration
-        retry_count=$((retry_count + 1))
-    done
 
-    if $all_pods_running; then
-        echo "Strimzi pod set $podset_name is ready."
-    else
-        echo "Failed to verify the readiness of Strimzi pod set $podset_name. Please check manually."
-        exit 1
-    fi
+        # Reset retry count for the next namespace
+        retry_count=0
+    done
 }
 
 # Waits for multiple Strimzi pod sets readiness
 wait_for_multiple_strimzi_podsets_readiness() {
     local podsets="$1"
-    local namespace="$2"
     IFS=',' read -ra PODSETS_ARRAY <<< "$podsets"
 
     for podset_name in "${PODSETS_ARRAY[@]}"; do
-        wait_for_strimzi_podset_readiness "$podset_name" "$namespace"
+        wait_for_strimzi_podset_readiness "$podset_name"
     done
 }
 
@@ -1377,7 +1382,7 @@ main() {
 
         # If StrimziPodSets are provided, we also check readiness of them
         if [[ -n "$strimzi_pod_sets" ]]; then
-            wait_for_multiple_strimzi_podsets_readiness "$strimzi_pod_sets" "$sut_namespace"
+            wait_for_multiple_strimzi_podsets_readiness "$strimzi_pod_sets"
         fi
     elif $network_chaos_flag; then
         execute_network_chaos "$experiment_name" "$clients_namespace"
@@ -1401,6 +1406,16 @@ main() {
 
         info "Waiting for all background jobs to finish"
         wait
+
+        # wait for Kafka pods readiness
+        wait_for_kafka_pods_readiness "$sut_namespace"
+        # wait for target Kafka pods readiness
+        wait_for_kafka_pods_readiness "$target_kafka_namespace"
+
+        # If StrimziPodSets are provided, we also check readiness of them
+        if [[ -n "$strimzi_pod_sets" ]]; then
+            wait_for_multiple_strimzi_podsets_readiness "$strimzi_pod_sets"
+        fi
         # TODO: add post checks that after successful Chaos experiment messages increased and overall load too
     elif $node_chaos_flag; then
         # Define a cleanup function
