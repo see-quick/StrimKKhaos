@@ -219,9 +219,12 @@ execute_network_chaos() {
 
 # Function to execute a complex workflow chaos experiment with unique name incrementation
 # $1 - base name of the workflow experiment
+# $2 - source Kafka namespace
+# $3 - Strimzi KafkaBridge namespace
 execute_workflow_chaos() {
     local base_workflow_name=$1
     local sut_namespace=$2
+    local strimzi_bridge_namespace=$3
 
     local workflow_yaml="./chaos-manifests/workflow_chaos/${base_workflow_name}.yaml"
 
@@ -241,7 +244,7 @@ execute_workflow_chaos() {
 
     # Update namespaces for all selectors within HTTPChaos and StressChaos templates
     yq e "(.spec.templates[] | select(.templateType == \"HTTPChaos\").httpChaos.selector.namespaces[0]) = \"$sut_namespace\"" -i "$workflow_yaml"
-    yq e "(.spec.templates[] | select(.templateType == \"StressChaos\").stressChaos.selector.namespaces[0]) = \"$sut_namespace\"" -i "$workflow_yaml"
+    yq e "(.spec.templates[] | select(.templateType == \"StressChaos\").stressChaos.selector.namespaces[0]) = \"$strimzi_bridge_namespace\"" -i "$workflow_yaml"
 
     info "Executing Workflow Chaos experiment: ${unique_workflow_name}"
     kubectl apply -f "$workflow_yaml"
@@ -570,11 +573,34 @@ verify_kafka_memory_usage() {
     fi
 }
 
-# Generic function to verify KafkaBridge metrics
+# Verifies metrics related to KafkaBridge using Prometheus queries.
+#
+# This function computes the average value of a specified metric over a given time range,
+# both before and during a chaos experiment. It then compares these averages to verify
+# the expected impact of the chaos experiment on KafkaBridge metrics.
+#
+# Args:
+#   $1 (metric_expr) - The Prometheus query expression for the metric to verify.
+#                      Example: "strimzi_bridge_kafka_producer_byte_total"
+#   $2 (metric_name) - A human-readable name for the metric, used for logging purposes.
+#                      Example: "KafkaBridge bytes produced"
+#   $3 (namespace)   - The Kubernetes namespace where the KafkaBridge instance is running.
+#                      This parameter is used to scope the Prometheus query.
+#
+# Usage example:
+#   verify_kafka_bridge_metric "strimzi_bridge_kafka_producer_byte_total" \
+#                              "KafkaBridge bytes produced" \
+#                              "strimzi-bridge-namespace"
+#
+# This function first checks the availability of Prometheus and then computes the normal
+# average of the specified metric over a predefined historical time range. After a sleep
+# period to allow the chaos experiment to have an effect, it computes the chaos average of
+# the metric over a shorter, more recent time range. Finally, it compares these averages to
+# determine if the chaos experiment had the expected impact.
 verify_kafka_bridge_metric() {
     local metric_expr=$1
     local metric_name=$2
-    local namespace="strimzi-bridge"
+    local namespace=$3
     local additional_params="topic != \"\""
     local aggregation_function="sum(rate("
     local aggregation_criteria="by (clientId, topic)"
@@ -646,10 +672,9 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0 --install --release-name my-chaos --namespace my-namespace --version 2.6.3"
-    echo "  $0 --pod-chaos anubis-kafka-kill-all-pods --sut-namespace myproject --metrics-selector 'my-cluster-*'"
-    echo "  $0 --network-chaos anubis-kafka-producers-fast-internal-network-delay-all --sut-namespace myproject --metrics-selector 'my-cluster-*'"
-    echo "  $0 --workflow-chaos my-chaos-workflow --sut-namespace myproject --metrics-selector 'my-cluster-*'"
-    echo "  $0 --node-chaos my-node-worker-01 --sut-namespace myproject --metrics-selector 'my-cluster-*' (OpenStack only)"
+    echo "  $0 --pod-chaos kafka-3-pods-failure --sut-namespace myproject --metrics-selector 'my-cluster-.*' --strimzi-pod-sets 'my-cluster-kafka,my-cluster-zookeeper' --enable-probes"
+    echo "  $0 --network-chaos kafka-producers-fast-internal-network-delay-all --sut-namespace myproject --clients-namespace strimzi-clients --metrics-selector 'my-cluster-.*' --enable-probes"
+    echo "  $0 --workflow-chaos my-chaos-workflow --sut-namespace myproject --metrics-selector 'my-cluster-*' --strimzi-bridge-namespace my-bridge-namespace --target-kafka-namespace my-target-namespace --target-metrics-selector 'target-cluster-*' --enable-probes"
 }
 
 
@@ -1169,6 +1194,7 @@ main() {
     local metrics_selector=""
     local strimzi_pod_sets=""
     local clients_namespace=""
+    local strimzi_bridge_namespace=""
 
     if [[ $# -eq 0 ]]; then
         usage
@@ -1178,33 +1204,33 @@ main() {
     while [[ $# -gt 0 ]]; do
        key="$1"
        case "$key" in
-           -h|--help)
+            -h|--help)
                usage
                exit 0
                ;;
-           --install)
+            --install)
                install_flag=true
                shift
                ;;
-           --uninstall)
+            --uninstall)
                uninstall_flag=true
                shift
                ;;
-           --pod-chaos)
+            --pod-chaos)
               pod_chaos_flag=true
               chaos_type="pod-chaos"
               shift
               experiment_name="$1"
               shift
               ;;
-          --network-chaos)
+            --network-chaos)
               network_chaos_flag=true
               chaos_type="network-chaos"
               shift
               experiment_name="$1"
               shift
               ;;
-          --workflow-chaos)
+            --workflow-chaos)
               workflow_chaos_flag=true
               chaos_type="workflow-chaos"
               shift
@@ -1219,7 +1245,7 @@ main() {
               shift
               shift
               ;;
-           --sut-namespace)
+            --sut-namespace)
                if [[ -n $chaos_type && $chaos_type != "node-chaos" ]]; then
                    sut_namespace="$2"
                else
@@ -1229,7 +1255,7 @@ main() {
                shift
                shift
                ;;
-           --metrics-selector)
+            --metrics-selector)
                if [[ -n $chaos_type && $chaos_type != "node-chaos" ]]; then
                    metrics_selector="$2"
                else
@@ -1239,52 +1265,67 @@ main() {
                shift
                shift
                ;;
-           --release-name)
+            --release-name)
                release_name="$2"
                shift
                shift
                ;;
-           --namespace)
+            --namespace)
                namespace="$2"
                shift
                shift
                ;;
-           --clients-namespace)
+            --clients-namespace)
                clients_namespace="$2"
                shift
                shift
                ;;
-           --version)
+            --version)
                cm_version="$2"
                shift
                shift
                ;;
-           --debug)
+            --debug)
                set -xe
                shift
                ;;
-           --openshift)
+            --openshift)
                openshift_flag=true
                shift
                ;;
-           --clear-experiments)
+            --clear-experiments)
                clear_all_chaos_experiments
                exit 0
                ;;
-           --enable-probes)
+            --enable-probes)
                enable_probes_flag=true
                shift
                ;;
-           --install-kubectl)
+            --install-kubectl)
                install_kubectl_flag=true
                shift
                ;;
-           --strimzi-pod-sets)
+            --strimzi-pod-sets)
                strimzi_pod_sets="$2"
                shift # past argument
                shift # past value
                ;;
-           *)
+            --strimzi-bridge-namespace)
+                strimzi_bridge_namespace="$2"
+                shift # past argument
+                shift # past value
+                ;;
+            --target-kafka-namespace)
+                target_kafka_namespace="$2"
+                shift # past argument
+                shift # past value
+                ;;
+            --target-metrics-selector)
+                target_metrics_selector="$2"
+                shift # past argument
+                shift # past value
+                ;;
+            *)
                err "Unknown option $key"
                usage
                exit 1
@@ -1343,17 +1384,20 @@ main() {
 
         verify_kafka_throughput "$sut_namespace" "$metrics_selector"
     elif $workflow_chaos_flag; then
-        execute_workflow_chaos "$experiment_name" "$sut_namespace" "$metrics_selector"
+        execute_workflow_chaos "$experiment_name" "$sut_namespace" "$strimzi_bridge_namespace"
 
         # run verification procedures in parallel
         verify_kafka_throughput "$sut_namespace" "$metrics_selector" &
         verify_kafka_memory_usage "$sut_namespace" "$metrics_selector" &
         verify_kafka_cpu_usage "$sut_namespace" "$metrics_selector" &
 
-        # TODO: check for target cluster metrics
+        # target Kafka
+        verify_kafka_throughput "$target_kafka_namespace" "$target_metrics_selector" &
+        verify_kafka_memory_usage "$target_kafka_namespace" "$target_metrics_selector" &
+        verify_kafka_cpu_usage "$target_kafka_namespace" "$target_metrics_selector" &
 
-        verify_kafka_bridge_metric "strimzi_bridge_kafka_producer_byte_total" "KafkaBridge bytes produced" &
-        verify_kafka_bridge_metric "strimzi_bridge_kafka_producer_record_send_total" "KafkaBridge records sent" &
+        verify_kafka_bridge_metric "strimzi_bridge_kafka_producer_byte_total" "KafkaBridge bytes produced" "$strimzi_bridge_namespace" &
+        verify_kafka_bridge_metric "strimzi_bridge_kafka_producer_record_send_total" "KafkaBridge records sent" "$strimzi_bridge_namespace" &
 
         info "Waiting for all background jobs to finish"
         wait

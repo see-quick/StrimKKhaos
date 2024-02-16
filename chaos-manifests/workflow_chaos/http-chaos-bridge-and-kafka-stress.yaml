@@ -20,7 +20,6 @@ spec:
           labelSelectors:
             strimzi.io/kind: KafkaBridge
           namespaces:
-            # TODO: change it to strimzi-bridge
             - myproject
         target: Response
         port: 8080
@@ -33,7 +32,6 @@ spec:
         mode: one
         selector:
           namespaces:
-            # TODO: change it to strimzi-kafka
             - myproject
           labelSelectors:
             strimzi.io/kind: "Kafka"
