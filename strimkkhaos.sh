@@ -105,10 +105,9 @@ install_chaos_mesh() {
     # Get all chaos-daemon pod names
     daemon_pods=$(kubectl get pods -n "$namespace" -o custom-columns=:metadata.name --no-headers | grep chaos-daemon)
 
-    # Loop over each daemon pod and execute the modprobe command
+    # Loop over each daemon pod and attempt modprobe ebtables with retries
     for pod in $daemon_pods; do
-      info "Executing modprobe ebtables on pod: $pod"
-      kubectl exec -n "$namespace" "$pod" -- modprobe ebtables
+      execute_modprobe "$pod"
     done
 
     info "All daemon pods have been processed."
@@ -145,6 +144,29 @@ uninstall_chaos_mesh() {
         err "Failed to verify the deletion of all Chaos Mesh pods. Please check manually."
         exit 1
     fi
+}
+
+# Function to execute modprobe with retries
+execute_modprobe() {
+  local pod_name=$1
+  local retries=3
+  local success=0
+
+  for ((i=0; i<=retries; i++)); do
+    info "Attempting to execute modprobe ebtables on $pod_name, try $((i+1))"
+    if kubectl exec -n "$namespace" "$pod_name" -- modprobe ebtables; then
+      info "Successfully executed modprobe ebtables on $pod_name"
+      success=1
+      break
+    else
+      warn "Failed to execute modprobe ebtables on $pod_name, retrying in 5 seconds..."
+      sleep 5
+    fi
+  done
+
+  if [[ $success -ne 1 ]]; then
+    err "Failed to execute modprobe ebtables on $pod_name after $retries retries"
+  fi
 }
 
 #####################################################################################################################
