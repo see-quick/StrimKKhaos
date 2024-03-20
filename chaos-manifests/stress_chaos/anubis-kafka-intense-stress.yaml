@@ -1,7 +1,7 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: StressChaos
 metadata:
-  name: kafka-node-intense-stress-1
+  name: kafka-node-intense-stress
   namespace: strimzi-kafka
 spec:
   mode: one

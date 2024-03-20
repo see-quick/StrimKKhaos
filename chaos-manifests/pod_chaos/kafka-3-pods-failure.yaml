@@ -1,14 +1,14 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: PodChaos
 metadata:
-  name: kafka-3-pods-failure-6
-  namespace: myproject
+  name: kafka-3-pods-failure
+  namespace: strimzi-kafka
 spec:
   action: pod-failure
   mode: fixed
   selector:
     namespaces:
-      - myproject
+      - strimzi-kafka
     labelSelectors:
       strimzi.io/kind: "Kafka"
       strimzi.io/broker-role: "true"

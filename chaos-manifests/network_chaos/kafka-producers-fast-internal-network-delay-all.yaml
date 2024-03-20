@@ -1,8 +1,8 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: NetworkChaos
 metadata:
-  name: kafka-producers-fast-internal-network-delay-all-2
-  namespace: "strimzi-clients"
+  name: kafka-producers-fast-internal-network-delay-all
+  namespace: strimzi-clients
 spec:
   action: delay
   mode: all
