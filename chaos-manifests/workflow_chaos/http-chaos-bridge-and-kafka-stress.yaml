@@ -2,7 +2,7 @@ apiVersion: chaos-mesh.org/v1alpha1
 kind: Workflow
 metadata:
   name: http-chaos-bridge-and-kafka-stress
-  namespace: myproject
+  namespace: strimzi-bridge
 spec:
   entry: parallel-of-2-chaos
   templates:
@@ -20,7 +20,7 @@ spec:
           labelSelectors:
             strimzi.io/kind: KafkaBridge
           namespaces:
-            - myproject
+            - strimzi-bridge
         target: Response
         port: 8080
         method: POST
@@ -32,7 +32,7 @@ spec:
         mode: one
         selector:
           namespaces:
-            - myproject
+            - strimzi-kafka
           labelSelectors:
             strimzi.io/kind: "Kafka"
             strimzi.io/broker-role: "true"

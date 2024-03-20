@@ -1,0 +1,22 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: kafkaconnect-network-partition
+  namespace: strimzi-connect
+spec:
+  action: partition
+  mode: one
+  selector:
+    namespaces:
+      - strimzi-kafka
+    labelSelectors:
+      "app.kubernetes.io/instance": "strimzi-kafka-worker-01" # Adjust this selector to match your KafkaConnect pods
+  direction: to
+  target:
+    selector:
+      namespaces:
+        - strimzi-connect
+      labelSelectors:
+        "app.kubernetes.io/instance": "imhotep-connect-worker-01"  # Adjust this selector to match your Kafka cluster pods
+    mode: all
+  duration: "5m"
