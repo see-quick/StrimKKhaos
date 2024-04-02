@@ -1440,6 +1440,7 @@ main() {
         fi
         # TODO: add post checks that after successful Chaos experiment messages increased and overall load too
     elif $node_chaos_flag; then
+        # TODO: adapt to this scenario when it will be implemented (i.e., https://github.com/chaos-mesh/chaos-mesh/issues/4345)
         # Define a cleanup function
         cleanup() {
             echo "Performing cleanup tasks..."
@@ -1460,7 +1461,6 @@ main() {
 
         monitor_node_state_post_chaos "$node_name"
 
-        # TODO: parametrize this
         check_kafka_readiness "my-cluster" "myproject"
         check_kafka_readiness "my-target-cluster" "myproject"
         check_kmm2_readiness "my-mirror-maker-2" "myproject"
